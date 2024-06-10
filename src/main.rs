@@ -14,10 +14,8 @@ async fn main() -> anyhow::Result<()> {
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
 
     let app = App::init().await?;
-    let mut should_quit = false;
-    while !should_quit {
+    while !app.run().await? {
         terminal.draw(|frame| app.ui(frame))?;
-        should_quit = app.run().await?;
     }
     Ok(())
 }

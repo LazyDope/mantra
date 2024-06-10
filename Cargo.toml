@@ -12,6 +12,7 @@ crossterm = "0.27.0"
 ratatui = "0.26.2"
 serde = { version = "1.0.199", features = ["derive"] }
 serde_yaml = "0.9.34"
-sqlx = { version = "0.7.4", features = ["sqlite", "runtime-async-std"] }
+sqlx = { version = "0.7.4", features = ["sqlite", "runtime-async-std", "time"] }
 thiserror = "1.0.59"
+time = "0.3.36"
 xdg = "2.5.2"

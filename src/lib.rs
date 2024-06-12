@@ -1,6 +1,6 @@
 use std::ops::{Bound, RangeBounds};
 
-use async_std::stream::{Stream, StreamExt};
+use async_std::stream::StreamExt;
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{prelude::*, widgets::*};
 use sqlx::{migrate::MigrateDatabase, Row, Sqlite, SqlitePool};
@@ -33,11 +33,6 @@ pub struct Transaction {
     value: i32,
     transaction_type: TransactionType,
     msg: String,
-}
-
-pub struct TransactionStream {
-    stream: Box<dyn Stream<Item = Transaction>>,
-    query: *mut str,
 }
 
 #[derive(Error, Debug)]
@@ -147,7 +142,7 @@ impl Storage {
         &self,
         user: i32,
         when: Option<DT>,
-    ) -> Result<TransactionStream, StorageError>
+    ) -> Result<Vec<Transaction>, StorageError>
     where
         DT: RangeBounds<time::PrimitiveDateTime>,
     {
@@ -181,8 +176,7 @@ impl Storage {
             }
         };
 
-        let query_statement = Box::into_raw(query_statement.into_boxed_str());
-        let query = sqlx::query(unsafe { &*query_statement }).bind(user);
+        let query = sqlx::query(&query_statement).bind(user);
 
         let query = if let Some(when_range) = when {
             let query = match when_range.start_bound() {
@@ -200,8 +194,9 @@ impl Storage {
             query
         };
 
-        Ok(TransactionStream {
-            stream: Box::new(query.fetch(&self.db).filter_map(|row| {
+        Ok(query
+            .fetch(&self.db)
+            .filter_map(|row| {
                 row.ok()
                     .map(|row| {
                         let datetime = row.get("datetime");
@@ -218,9 +213,9 @@ impl Storage {
                         })
                     })
                     .flatten()
-            })),
-            query: query_statement,
-        })
+            })
+            .collect()
+            .await)
     }
 }
 
@@ -233,11 +228,5 @@ impl TryFrom<i32> for TransactionType {
             1 => Ok(Self::Character),
             _ => Err(MissingType),
         }
-    }
-}
-
-impl Drop for TransactionStream {
-    fn drop(&mut self) {
-        drop(unsafe { Box::from_raw(self.query) })
     }
 }

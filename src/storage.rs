@@ -38,8 +38,8 @@ impl Storage {
         };
 
         let db = SqlitePool::connect(&db_url).await?;
-        sqlx::query("CREATE TABLE IF NOT EXISTS transactions (datetime INTEGER PRIMARY KEY NOT NULL, user_id INTEGER NOT NULL, value INTEGER NOT NULL, type INTEGER NOT NULL, message TEXT)").execute(&db).await?;
-        sqlx::query("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY NOT NULL, name TEXT UNIQUE NOT NULL)").execute(&db).await?;
+        sqlx::query("CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY NOT NULL, datetime INTEGER NOT NULL, user_id INTEGER NOT NULL, value INTEGER NOT NULL, type INTEGER NOT NULL, message TEXT)").execute(&db).await?;
+        sqlx::query("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY NOT NULL, name TEXT UNIQUE NOT NULL)").execute(&db).await?;
         Ok(Storage { db })
     }
 
@@ -55,6 +55,13 @@ impl Storage {
             .bind(amount)
             .bind(transaction_type as i32)
             .bind(msg)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn remove_transactions(&self, filter: &str) -> Result<(), StorageRunError> {
+        sqlx::query(&format!("DELETE FROM transactions WHERE {filter}"))
             .execute(&self.db)
             .await?;
         Ok(())
@@ -142,7 +149,7 @@ impl Storage {
             .await
             .expect("Should be able to insert a new user");
 
-        let query_statement = "SELECT user_id, name FROM users WHERE name=$1";
+        let query_statement = "SELECT id, name FROM users WHERE name=$1";
         let query = sqlx::query(&query_statement).bind(username);
 
         let user_record = query
@@ -151,7 +158,7 @@ impl Storage {
             .await
             .ok_or(StorageRunError::RecordMissing)??;
         Ok(User {
-            id: user_record.get("user_id"),
+            id: user_record.get("id"),
             name: user_record.get("name"),
         })
     }

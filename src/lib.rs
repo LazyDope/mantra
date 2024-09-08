@@ -3,6 +3,7 @@ use xdg::BaseDirectories;
 
 pub mod app;
 mod config;
+mod serde;
 mod storage;
 
 pub struct User {
@@ -13,6 +14,7 @@ pub struct User {
 pub struct MissingType;
 
 pub struct Transaction {
+    pub trans_id: i32,
     pub datetime: PrimitiveDateTime,
     pub user_id: i32,
     pub value: i32,

@@ -1,9 +1,10 @@
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     prelude::*,
-    widgets::{Block, Row, Table, TableState},
+    widgets::{Block, Paragraph, Row, Table, TableState},
 };
 use thiserror::Error;
+use time::UtcOffset;
 
 use crate::{
     config::{Config, ConfigError},
@@ -17,6 +18,7 @@ pub struct App {
     current_user: Option<User>,
     transactions: Vec<Transaction>,
     table_state: TableState,
+    status_text: String,
 }
 
 #[derive(Error, Debug)]
@@ -37,18 +39,24 @@ pub enum AppError {
     StorageRunError(#[from] StorageRunError),
 }
 
+pub enum AppMode {
+    Normal,
+    Delete,
+    Create,
+}
+
 impl App {
     pub async fn init(username: String) -> Result<Self, AppInitError> {
         let config = Config::load_or_create();
         let storage = Storage::load_or_create().await?;
         let user = storage.get_or_create_user(username.to_lowercase()).await?;
-        let transactions: Vec<Transaction> = storage.get_transactions(user.id, ..).await?;
         Ok(App {
             config: config.await?,
+            transactions: storage.get_transactions(user.id, ..).await?,
             storage,
             current_user: Some(user),
-            transactions,
-            table_state: TableState::new(),
+            table_state: TableState::default(),
+            status_text: String::new(),
         })
     }
 
@@ -68,6 +76,8 @@ impl App {
                     trans.msg.clone(),
                     trans
                         .datetime
+                        .assume_utc()
+                        .to_offset(self.config.timezone)
                         .format(time::macros::format_description!(
                             "[year]-[month]-[day] [hour]:[minute]"
                         ))
@@ -80,11 +90,15 @@ impl App {
             .title("MAN/TRA");
         let table_widget = Table::new(rows, widths)
             .block(block)
-            .header(Row::new(["Amount", "Note", "Date/Time"]).underlined());
+            .header(Row::new(["Amount", "Note", "Date/Time"]).underlined())
+            .highlight_style(Style::new().black().on_white());
         let [table_area, status_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(3)]).areas(frame.area());
         frame.render_stateful_widget(&table_widget, table_area, &mut self.table_state);
-        frame.render_widget(Block::bordered().title("Status"), status_area);
+        frame.render_widget(
+            Paragraph::new(self.status_text.clone()).block(Block::bordered().title("Status")),
+            status_area,
+        );
     }
 
     pub async fn run(&mut self) -> Result<bool, AppError> {
@@ -105,6 +119,7 @@ impl App {
                                 )
                                 .await?;
 
+                            self.status_text = String::from("Added transaction");
                             self.update_table().await?;
                         }
                         KeyCode::Char('c') => {
@@ -115,7 +130,21 @@ impl App {
                                 ))
                                 .await?;
 
+                            self.status_text = String::from("Cleared log");
                             self.update_table().await?;
+                        }
+                        KeyCode::Char('d') => {
+                            if let Some(index) = self.table_state.selected() {
+                                let transaction = &self.transactions[index];
+                                self.storage
+                                    .remove_transactions(&format!("id = {}", transaction.trans_id))
+                                    .await?;
+                                self.status_text = format!(
+                                    "Deleted \"{} | {}\"",
+                                    transaction.value, transaction.msg
+                                );
+                                self.update_table().await?
+                            }
                         }
                         KeyCode::Down => self.table_state.select_next(),
                         KeyCode::Up => self.table_state.select_previous(),

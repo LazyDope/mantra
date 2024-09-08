@@ -5,6 +5,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use time::UtcOffset;
+
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error(transparent)]
@@ -18,6 +20,8 @@ pub enum ConfigError {
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub currency: Currency,
+    #[serde(with = "crate::serde::utc_offset")]
+    pub timezone: UtcOffset,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -30,6 +34,7 @@ impl Config {
     fn new() -> Self {
         Self {
             currency: "Manna".into(),
+            timezone: UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC),
         }
     }
 

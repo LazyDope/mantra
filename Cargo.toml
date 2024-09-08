@@ -9,10 +9,11 @@ edition = "2021"
 anyhow = "1.0.82"
 async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
 crossterm = "0.28.1"
+deranged = { version = "0.3.11", features = ["serde"] }
 ratatui = "0.28.1"
 serde = { version = "1.0.209", features = ["derive"] }
 serde_yaml = "0.9.34"
 sqlx = { version = "0.8.1", features = ["sqlite", "runtime-async-std", "time"] }
 thiserror = "1.0.63"
-time = { version = "0.3.36", features = ["formatting"] }
+time = { version = "0.3.36", features = ["formatting", "local-offset"] }
 xdg = "2.5.2"

@@ -76,7 +76,7 @@ impl Storage {
         DT: RangeBounds<time::PrimitiveDateTime>,
     {
         let mut query_statement = String::from(
-            "SELECT datetime, user_id, value, type, message FROM transactions WHERE user_id=$1",
+            "SELECT id, datetime, user_id, value, type, message FROM transactions WHERE user_id=$1",
         );
         let mut count = 1;
         match when.start_bound() {
@@ -122,12 +122,14 @@ impl Storage {
             .filter_map(|row| {
                 row.ok()
                     .map(|row| {
+                        let trans_id = row.get("id");
                         let datetime = row.get("datetime");
                         let user_id = row.get("user_id");
                         let value = row.get("value");
                         let transaction_type = row.get::<i32, _>("type").try_into().ok()?;
                         let msg = row.get("message");
                         Some(Transaction {
+                            trans_id,
                             datetime,
                             user_id,
                             value,

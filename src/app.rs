@@ -4,7 +4,6 @@ use ratatui::{
     widgets::{Block, Paragraph, Row, Table, TableState},
 };
 use thiserror::Error;
-use time::UtcOffset;
 
 use crate::{
     config::{Config, ConfigError},

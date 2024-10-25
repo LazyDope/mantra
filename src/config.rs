@@ -10,11 +10,11 @@ use time::UtcOffset;
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error(transparent)]
-    BaseDirsError(#[from] xdg::BaseDirectoriesError),
+    BaseDirs(#[from] xdg::BaseDirectoriesError),
     #[error(transparent)]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
     #[error(transparent)]
-    SerdeError(#[from] serde_yaml::Error),
+    Serde(#[from] serde_yaml::Error),
 }
 
 #[derive(Serialize, Deserialize)]

@@ -13,11 +13,11 @@ pub struct Storage {
 #[derive(Error, Debug)]
 pub enum StorageLoadError {
     #[error(transparent)]
-    BaseDirsError(#[from] xdg::BaseDirectoriesError),
+    BaseDirs(#[from] xdg::BaseDirectoriesError),
     #[error(transparent)]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
     #[error(transparent)]
-    DBError(#[from] sqlx::Error),
+    DB(#[from] sqlx::Error),
 }
 
 #[derive(Error, Debug)]
@@ -130,38 +130,36 @@ impl Storage {
         let query = sqlx::query(&query_statement).bind(user);
 
         let query = match when.start_bound() {
-            Bound::Included(start) => query.bind(start.clone()),
-            Bound::Excluded(start) => query.bind(start.clone()),
+            Bound::Included(start) => query.bind(start),
+            Bound::Excluded(start) => query.bind(start),
             Bound::Unbounded => query,
         };
 
         let query = match when.end_bound() {
-            Bound::Included(end) => query.bind(end.clone()),
-            Bound::Excluded(end) => query.bind(end.clone()),
+            Bound::Included(end) => query.bind(end),
+            Bound::Excluded(end) => query.bind(end),
             Bound::Unbounded => query,
         };
 
         Ok(query
             .fetch(&self.db)
             .filter_map(|row| {
-                row.ok()
-                    .map(|row| {
-                        let trans_id = row.get("id");
-                        let datetime = row.get("datetime");
-                        let user_id = row.get("user_id");
-                        let value = row.get("value");
-                        let transaction_type = row.get::<i32, _>("type").try_into().ok()?;
-                        let msg = row.get("message");
-                        Some(Transaction {
-                            trans_id,
-                            datetime,
-                            user_id,
-                            value,
-                            transaction_type,
-                            msg,
-                        })
+                row.ok().and_then(|row| {
+                    let trans_id = row.get("id");
+                    let datetime = row.get("datetime");
+                    let user_id = row.get("user_id");
+                    let value = row.get("value");
+                    let transaction_type = row.get::<i32, _>("type").try_into().ok()?;
+                    let msg = row.get("message");
+                    Some(Transaction {
+                        trans_id,
+                        datetime,
+                        user_id,
+                        value,
+                        transaction_type,
+                        msg,
                     })
-                    .flatten()
+                })
             })
             .collect()
             .await)
@@ -169,14 +167,14 @@ impl Storage {
 
     pub async fn get_or_create_user(&self, username: String) -> Result<User, StorageRunError> {
         let insert_statement = "INSERT OR IGNORE INTO users (name) VALUES ($1)";
-        let insert = sqlx::query(&insert_statement).bind(&username);
+        let insert = sqlx::query(insert_statement).bind(&username);
         insert
             .execute(&self.db)
             .await
             .expect("Should be able to insert a new user");
 
         let query_statement = "SELECT id, name FROM users WHERE name=$1";
-        let query = sqlx::query(&query_statement).bind(username);
+        let query = sqlx::query(query_statement).bind(username);
 
         let user_record = query
             .fetch(&self.db)

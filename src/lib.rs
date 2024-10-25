@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use time::PrimitiveDateTime;
 use xdg::BaseDirectories;
 
@@ -22,7 +24,9 @@ pub struct Transaction {
     pub msg: String,
 }
 
+#[derive(Default)]
 pub enum TransactionType {
+    #[default]
     Other = 0,
     Character = 1,
 }
@@ -40,5 +44,18 @@ impl TryFrom<i32> for TransactionType {
             1 => Ok(Self::Character),
             _ => Err(MissingType),
         }
+    }
+}
+
+impl Display for TransactionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                TransactionType::Other => "Other",
+                TransactionType::Character => "Character",
+            }
+        )
     }
 }

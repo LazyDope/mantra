@@ -1,8 +1,10 @@
 use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
+    layout::Flex,
     prelude::*,
-    widgets::{Block, Paragraph, Row, Table, TableState},
+    widgets::{Block, Clear, Paragraph, Row, Table, TableState},
 };
+use text::ToText;
 use thiserror::Error;
 
 use crate::{
@@ -11,6 +13,9 @@ use crate::{
     Transaction, TransactionType, User,
 };
 
+pub mod popups;
+use popups::{AddTransaction, AddTransactionField, Popup};
+
 pub struct App {
     config: Config,
     storage: Storage,
@@ -18,6 +23,7 @@ pub struct App {
     transactions: Vec<Transaction>,
     table_state: TableState,
     status_text: String,
+    popup: Option<Popup>,
 }
 
 #[derive(Error, Debug)]
@@ -36,6 +42,8 @@ pub enum AppError {
     IoError(#[from] std::io::Error),
     #[error(transparent)]
     StorageRunError(#[from] StorageRunError),
+    #[error(transparent)]
+    ParseIntError(#[from] std::num::ParseIntError),
 }
 
 pub enum AppMode {
@@ -56,6 +64,7 @@ impl App {
             current_user: Some(user),
             table_state: TableState::default(),
             status_text: String::new(),
+            popup: None,
         })
     }
 
@@ -98,56 +107,133 @@ impl App {
             Paragraph::new(self.status_text.clone()).block(Block::bordered().title("Status")),
             status_area,
         );
+
+        match &self.popup {
+            Some(Popup::AddTransaction(AddTransaction {
+                trans_type,
+                amount,
+                msg,
+                selected_field,
+            })) => {
+                const TYPE_HEIGHT: u16 = 1;
+                const AMOUNT_HEIGHT: u16 = 1;
+                const MSG_HEIGHT: u16 = 3;
+                const SUBMIT_HEIGHT: u16 = 1;
+                const BORDER_SIZE: u16 = 1;
+                const SUBMIT_TEXT: &'static str = "Submit";
+
+                let [area] = Layout::vertical([Constraint::Length(
+                    TYPE_HEIGHT + AMOUNT_HEIGHT + MSG_HEIGHT + 10 * BORDER_SIZE,
+                )])
+                .flex(Flex::Center)
+                .areas(table_area);
+                let [area] = Layout::horizontal([Constraint::Percentage(40)])
+                    .flex(Flex::Center)
+                    .areas(area);
+                let block = Block::bordered().title("Add Transaction");
+                frame.render_widget(Clear, area);
+                frame.render_widget(block, area);
+                let [_, area, _] = Layout::horizontal([
+                    Constraint::Length(BORDER_SIZE),
+                    Constraint::Fill(1),
+                    Constraint::Length(BORDER_SIZE),
+                ])
+                .areas(area);
+                let [_, type_area, amount_area, msg_area, submit_area, _] = Layout::vertical([
+                    Constraint::Length(BORDER_SIZE),
+                    Constraint::Length(TYPE_HEIGHT + BORDER_SIZE * 2),
+                    Constraint::Length(AMOUNT_HEIGHT + BORDER_SIZE * 2),
+                    Constraint::Length(MSG_HEIGHT + BORDER_SIZE * 2),
+                    Constraint::Length(SUBMIT_HEIGHT + BORDER_SIZE * 2),
+                    Constraint::Length(BORDER_SIZE),
+                ])
+                .areas(area);
+
+                let mut type_field = Block::bordered().title("Type");
+                let mut amount_field = Block::bordered().title("Amount");
+                let mut msg_field = Block::bordered().title("Message");
+                let mut submit_field = Block::bordered();
+
+                let active_style = Style::default().bg(Color::LightYellow).fg(Color::Black);
+
+                {
+                    use AddTransactionField::*;
+                    match selected_field {
+                        TransactionType => type_field = type_field.style(active_style),
+                        Amount => amount_field = amount_field.style(active_style),
+                        Message => msg_field = msg_field.style(active_style),
+                        Submit => submit_field = submit_field.style(active_style),
+                    };
+                }
+
+                let type_text = Paragraph::new(trans_type.to_text()).block(type_field);
+                let amount_text = Paragraph::new(amount.to_text()).block(amount_field);
+                let msg_text = Paragraph::new(msg.to_text()).block(msg_field);
+                let submit_text = Paragraph::new(SUBMIT_TEXT)
+                    .block(submit_field)
+                    .alignment(Alignment::Center);
+
+                frame.render_widget(type_text, type_area);
+                frame.render_widget(amount_text, amount_area);
+                frame.render_widget(msg_text, msg_area);
+                frame.render_widget(
+                    submit_text,
+                    Layout::horizontal([Constraint::Length(
+                        SUBMIT_TEXT.len() as u16 + BORDER_SIZE * 2,
+                    )])
+                    .flex(Flex::Center)
+                    .areas::<1>(submit_area)[0],
+                )
+            }
+            None => (),
+        }
     }
 
     pub async fn run(&mut self) -> Result<bool, AppError> {
         if event::poll(std::time::Duration::from_millis(50))? {
-            if let Event::Key(key) = event::read()? {
-                if key.kind == event::KeyEventKind::Press {
-                    match key.code {
-                        KeyCode::Char('q') => {
-                            return Ok(false);
-                        }
-                        KeyCode::Char('a') => {
-                            self.storage
-                                .add_transaction(
-                                    self.current_user.as_ref().map(|v| v.id).unwrap(),
-                                    1000,
-                                    TransactionType::Other,
-                                    "Testing!",
-                                )
-                                .await?;
-
-                            self.status_text = String::from("Added transaction");
-                            self.update_table().await?;
-                        }
-                        KeyCode::Char('c') => {
-                            self.storage
-                                .remove_transactions(&format!(
-                                    "user_id = {}",
-                                    self.current_user.as_ref().map(|v| v.id).unwrap()
-                                ))
-                                .await?;
-
-                            self.status_text = String::from("Cleared log");
-                            self.update_table().await?;
-                        }
-                        KeyCode::Char('d') => {
-                            if let Some(index) = self.table_state.selected() {
-                                let transaction = &self.transactions[index];
-                                self.storage
-                                    .remove_transactions(&format!("id = {}", transaction.trans_id))
-                                    .await?;
-                                self.status_text = format!(
-                                    "Deleted \"{} | {}\"",
-                                    transaction.value, transaction.msg
-                                );
-                                self.update_table().await?
+            if let Some(popup) = self.popup.take() {
+                self.popup = popup.process_event(self, event::read()?).await?;
+            } else {
+                if let Event::Key(key) = event::read()? {
+                    if key.kind == event::KeyEventKind::Press {
+                        match key.code {
+                            KeyCode::Char('q') => {
+                                return Ok(false);
                             }
+                            KeyCode::Char('a') => {
+                                self.popup = Some(Popup::AddTransaction(AddTransaction::default()));
+                            }
+                            KeyCode::Char('c') => {
+                                self.storage
+                                    .remove_transactions(&format!(
+                                        "user_id = {}",
+                                        self.current_user.as_ref().map(|v| v.id).unwrap()
+                                    ))
+                                    .await?;
+
+                                self.status_text = String::from("Cleared log");
+                                self.update_table().await?;
+                            }
+                            KeyCode::Char('d') => {
+                                if let Some(index) = self.table_state.selected() {
+                                    let transaction = &self.transactions[index];
+                                    self.storage
+                                        .remove_transactions(&format!(
+                                            "id = {}",
+                                            transaction.trans_id
+                                        ))
+                                        .await?;
+                                    self.status_text = format!(
+                                        "Deleted \"{} | {}\"",
+                                        transaction.value, transaction.msg
+                                    );
+                                    self.update_table().await?
+                                }
+                            }
+                            KeyCode::Down => self.table_state.select_next(),
+                            KeyCode::Up => self.table_state.select_previous(),
+                            _ => (),
                         }
-                        KeyCode::Down => self.table_state.select_next(),
-                        KeyCode::Up => self.table_state.select_previous(),
-                        _ => (),
                     }
                 }
             }

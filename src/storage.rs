@@ -38,8 +38,26 @@ impl Storage {
         };
 
         let db = SqlitePool::connect(&db_url).await?;
-        sqlx::query("CREATE TABLE IF NOT EXISTS transactions (id INTEGER PRIMARY KEY NOT NULL, datetime INTEGER NOT NULL, user_id INTEGER NOT NULL, value INTEGER NOT NULL, type INTEGER NOT NULL, message TEXT)").execute(&db).await?;
-        sqlx::query("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY NOT NULL, name TEXT UNIQUE NOT NULL)").execute(&db).await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS transactions (\
+                id INTEGER PRIMARY KEY NOT NULL,\
+                datetime INTEGER NOT NULL,\
+                user_id INTEGER NOT NULL,\
+                value INTEGER NOT NULL,\
+                type INTEGER NOT NULL,\
+                message TEXT\
+            )",
+        )
+        .execute(&db)
+        .await?;
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS users (\
+                id INTEGER PRIMARY KEY NOT NULL,\
+                name TEXT UNIQUE NOT NULL\
+            )",
+        )
+        .execute(&db)
+        .await?;
         Ok(Storage { db })
     }
 
@@ -50,13 +68,19 @@ impl Storage {
         transaction_type: TransactionType,
         msg: &str,
     ) -> Result<(), StorageRunError> {
-        sqlx::query("INSERT INTO transactions (datetime, user_id, value, type, message) VALUES (unixepoch(), $1, $2, $3, $4)")
-            .bind(user)
-            .bind(amount)
-            .bind(transaction_type as i32)
-            .bind(msg)
-            .execute(&self.db)
-            .await?;
+        sqlx::query(
+            "INSERT INTO transactions (\
+                datetime, user_id,\
+                value, type,\
+                message\
+            ) VALUES (unixepoch(), $1, $2, $3, $4)",
+        )
+        .bind(user)
+        .bind(amount)
+        .bind(transaction_type as i32)
+        .bind(msg)
+        .execute(&self.db)
+        .await?;
         Ok(())
     }
 

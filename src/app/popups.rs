@@ -83,12 +83,14 @@ impl AddTransaction {
                         AddTransactionField::Amount => {
                             self.amount -= get_modified_value(key.modifiers);
                         }
+                        AddTransactionField::Message => self.msg.prev(),
                         _ => (),
                     },
                     KeyCode::Right => match self.selected_field {
                         AddTransactionField::Amount => {
                             self.amount += get_modified_value(key.modifiers);
                         }
+                        AddTransactionField::Message => self.msg.next(),
                         _ => (),
                     },
                     KeyCode::Enter => match self.selected_field {
@@ -168,11 +170,15 @@ impl CursoredString {
 
     fn remove_behind(&mut self) {
         if self.index > 0 {
+            let old_len = self.text.len();
             let mut index = 0;
             self.text.retain(|_| {
                 index += 1;
-                index == self.index
-            })
+                index != self.index
+            });
+            if self.text.len() < old_len {
+                self.index -= 1;
+            };
         }
     }
 
@@ -195,11 +201,15 @@ impl CursoredString {
         }
         let byte_index = self
             .text
-            .chars()
-            .take(self.index)
-            .map(|c| c.len_utf8())
-            .sum();
+            .char_indices()
+            .map(|(i, _)| i)
+            .nth(self.index)
+            .unwrap_or(self.text.len());
+
         self.text.insert(byte_index, value);
+        if !self.inserting {
+            self.index += 1
+        }
     }
 }
 

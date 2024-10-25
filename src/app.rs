@@ -161,7 +161,13 @@ impl App {
                     match selected_field {
                         TransactionType => type_field = type_field.style(active_style),
                         Amount => amount_field = amount_field.style(active_style),
-                        Message => msg_field = msg_field.style(active_style),
+                        Message => {
+                            msg_field = msg_field.style(active_style);
+                            frame.set_cursor_position(Position::new(
+                                msg_area.x + msg.index as u16 + 1,
+                                msg_area.y + 1,
+                            ));
+                        }
                         Submit => submit_field = submit_field.style(active_style),
                     };
                 }

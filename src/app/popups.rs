@@ -20,11 +20,8 @@ impl Popup {
         event: Event,
     ) -> Result<Option<Self>, AppError> {
         match self {
-            Popup::AddTransaction(popup) => Ok(popup
-                .process_event(app, event)
-                .await?
-                .map(Self::AddTransaction)),
-            Popup::CreateUser(popup) => Ok(popup.process_event(app, event).await?),
+            Popup::AddTransaction(popup) => popup.process_event(app, event).await,
+            Popup::CreateUser(popup) => popup.process_event(app, event).await,
         }
     }
 
@@ -34,7 +31,7 @@ impl Popup {
     {
         match self {
             Popup::AddTransaction(popup) => popup.render_to_frame(area, frame),
-            Popup::CreateUser(_) => todo!(),
+            Popup::CreateUser(popup) => popup.render_to_frame(area, frame),
         }
     }
 }

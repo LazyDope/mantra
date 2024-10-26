@@ -12,6 +12,8 @@ use crate::{
     TransactionType,
 };
 
+use super::Popup;
+
 #[derive(Default)]
 pub struct AddTransaction {
     pub trans_type: TransactionType,
@@ -49,7 +51,7 @@ impl AddTransaction {
         mut self,
         app: &mut App,
         event: Event,
-    ) -> Result<Option<Self>, AppError> {
+    ) -> Result<Option<Popup>, AppError> {
         if let Event::Key(key) = event {
             if key.kind == event::KeyEventKind::Press {
                 match key.code {
@@ -87,17 +89,18 @@ impl AddTransaction {
                                 msg,
                                 ..
                             } = self;
-                            app.storage
+                            app.data
+                                .storage
                                 .add_transaction(
-                                    app.current_user.as_ref().map(|v| v.id).unwrap(),
+                                    app.data.current_user.as_ref().map(|v| v.id).unwrap(),
                                     amount,
                                     trans_type,
                                     &msg.text,
                                 )
                                 .await?;
 
-                            app.status_text = String::from("Added transaction");
-                            app.update_table().await?;
+                            app.data.status_text = String::from("Added transaction");
+                            app.data.update_table().await?;
                             return Ok(None);
                         }
                         _ => self.selected_field.next(),
@@ -123,7 +126,7 @@ impl AddTransaction {
                 }
             }
         }
-        Ok(Some(self))
+        Ok(Some(Popup::AddTransaction(self)))
     }
 
     pub(super) fn render_to_frame(&self, area: ratatui::prelude::Rect, frame: &mut Frame)

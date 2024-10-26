@@ -16,19 +16,24 @@ use crate::{
 pub mod popups;
 use popups::{AddTransaction, CreateUser, Popup};
 
-const MANTRA_INTRO: &str = r"  __       __   ______   __    __        __  ________  _______    ______   
- /  \     /  | /      \ /  \  /  |      /  |/        |/       \  /      \  
- $$  \   /$$ |/$$$$$$  |$$  \ $$ |     /$$/ $$$$$$$$/ $$$$$$$  |/$$$$$$  | 
- $$$  \ /$$$ |$$ |__$$ |$$$  \$$ |    /$$/     $$ |   $$ |__$$ |$$ |__$$ | 
- $$$$  /$$$$ |$$    $$ |$$$$  $$ |   /$$/      $$ |   $$    $$< $$    $$ | 
- $$ $$ $$/$$ |$$$$$$$$ |$$ $$ $$ |  /$$/       $$ |   $$$$$$$  |$$$$$$$$ | 
- $$ |$$$/ $$ |$$ |  $$ |$$ |$$$$ | /$$/        $$ |   $$ |  $$ |$$ |  $$ | 
- $$ | $/  $$ |$$ |  $$ |$$ | $$$ |/$$/         $$ |   $$ |  $$ |$$ |  $$ | 
- $$/      $$/ $$/   $$/ $$/   $$/ $$/          $$/    $$/   $$/ $$/   $$/  ";
+const MANTRA_INTRO: &str = r"  __       __   ______   __    __        __  ________  _______    ______
+ /  \     /  | /      \ /  \  /  |      /  |/        |/       \  /      \ 
+ $$  \   /$$ |/$$$$$$  |$$  \ $$ |     /$$/ $$$$$$$$/ $$$$$$$  |/$$$$$$  |
+ $$$  \ /$$$ |$$ |__$$ |$$$  \$$ |    /$$/     $$ |   $$ |__$$ |$$ |__$$ |
+ $$$$  /$$$$ |$$    $$ |$$$$  $$ |   /$$/      $$ |   $$    $$< $$    $$ |
+ $$ $$ $$/$$ |$$$$$$$$ |$$ $$ $$ |  /$$/       $$ |   $$$$$$$  |$$$$$$$$ |
+ $$ |$$$/ $$ |$$ |  $$ |$$ |$$$$ | /$$/        $$ |   $$ |  $$ |$$ |  $$ |
+ $$ | $/  $$ |$$ |  $$ |$$ | $$$ |/$$/         $$ |   $$ |  $$ |$$ |  $$ |
+ $$/      $$/ $$/   $$/ $$/   $$/ $$/          $$/    $$/   $$/ $$/   $$/";
 const INTRO_HEIGHT: u16 = 8;
 const INTRO_WIDTH: u16 = 77;
 
 pub struct App {
+    pub data: AppData,
+    pub state: AppState,
+}
+
+pub struct AppData {
     config: Config,
     storage: Storage,
     current_user: Option<User>,
@@ -36,9 +41,10 @@ pub struct App {
     table_state: TableState,
     status_text: String,
     popup: Option<Popup>,
-    state: AppState,
-    animation_progress: usize,
 }
+
+#[derive(Default)]
+pub struct Username(CursoredString);
 
 #[derive(Error, Debug)]
 pub enum AppInitError {
@@ -61,9 +67,10 @@ pub enum AppError {
 }
 
 pub enum AppState {
-    Intro,
-    UserLogin(CursoredString),
+    Intro { animation_progress: usize },
+    UserLogin(Username),
     LogTable,
+    Quitting,
 }
 
 impl App {
@@ -71,15 +78,18 @@ impl App {
         let config = Config::load_or_create();
         let storage = Storage::load_or_create().await?;
         Ok(App {
-            config: config.await?,
-            transactions: vec![],
-            storage,
-            current_user: None,
-            table_state: TableState::default(),
-            status_text: String::new(),
-            popup: None,
-            state: AppState::Intro,
-            animation_progress: 0,
+            data: AppData {
+                config: config.await?,
+                transactions: vec![],
+                storage,
+                current_user: None,
+                table_state: TableState::default(),
+                status_text: String::new(),
+                popup: None,
+            },
+            state: AppState::Intro {
+                animation_progress: 0,
+            },
         })
     }
 
@@ -88,32 +98,81 @@ impl App {
         let storage = Storage::load_or_create().await?;
         let user = storage.get_or_create_user(username.to_lowercase()).await?;
         Ok(App {
-            config: config.await?,
-            transactions: storage.get_transactions(user.id, ..).await?,
-            storage,
-            current_user: Some(user),
-            table_state: TableState::default(),
-            status_text: String::new(),
-            popup: None,
-            state: AppState::Intro,
-            animation_progress: 0,
+            data: AppData {
+                config: config.await?,
+                transactions: storage.get_transactions(user.id, ..).await?,
+                storage,
+                current_user: Some(user),
+                table_state: TableState::default(),
+                status_text: String::new(),
+                popup: None,
+            },
+            state: AppState::Intro {
+                animation_progress: 0,
+            },
         })
     }
 
     pub fn ui(&mut self, frame: &mut Frame<'_>) {
-        match &self.state {
-            AppState::Intro => self.play_intro(frame),
-            AppState::LogTable => self.display_log(frame),
-            AppState::UserLogin(username) => Self::user_login(username, frame),
+        match &mut self.state {
+            AppState::Intro { animation_progress } => {
+                self.data.play_intro(frame, animation_progress)
+            }
+            AppState::LogTable => self.data.display_log(frame),
+            AppState::UserLogin(username) => username.user_login(frame, self.data.popup.is_some()),
+            AppState::Quitting => (),
+        }
+
+        if let Some(popup) = &self.data.popup {
+            popup.render_to_frame(frame.area(), frame);
         }
     }
 
-    fn play_intro(&mut self, frame: &mut Frame<'_>) {
-        self.animation_progress = self
-            .animation_progress
+    pub async fn run(&mut self) -> Result<bool, AppError> {
+        if event::poll(std::time::Duration::from_millis(50))? {
+            if let Some(popup) = self.data.popup.take() {
+                self.data.popup = popup.process_event(self, event::read()?).await?;
+            } else if let Event::Key(key) = event::read()? {
+                if key.kind == event::KeyEventKind::Press {
+                    let new_state: Option<AppState> = match &mut self.state {
+                        AppState::Intro { .. } => {
+                            if self.data.current_user.is_some() {
+                                Some(AppState::LogTable)
+                            } else {
+                                Some(AppState::UserLogin(Default::default()))
+                            }
+                        }
+                        AppState::UserLogin(username) => {
+                            self.data.run_user_login(username, key).await?
+                        }
+                        AppState::LogTable => self.data.run_table(key).await?,
+                        AppState::Quitting => None,
+                    };
+                    if let Some(state) = new_state {
+                        self.state = state
+                    };
+                    return Ok(!matches!(self.state, AppState::Quitting));
+                }
+            }
+        }
+        Ok(true)
+    }
+}
+
+impl AppData {
+    pub async fn update_table(&mut self) -> Result<(), AppError> {
+        self.transactions = self
+            .storage
+            .get_transactions(self.current_user.as_ref().map(|v| v.id).unwrap(), ..)
+            .await?;
+        Ok(())
+    }
+
+    fn play_intro(&self, frame: &mut Frame<'_>, animation_progress: &mut usize) {
+        *animation_progress = animation_progress
             .saturating_add(frame.count() / 4)
             .clamp(0, MANTRA_INTRO.len());
-        let text_progress = &MANTRA_INTRO[0..self.animation_progress];
+        let text_progress = &MANTRA_INTRO[0..*animation_progress];
         let [intro_area, instruct_area] =
             Layout::vertical([Constraint::Length(INTRO_HEIGHT + 4), Constraint::Length(3)])
                 .flex(Flex::Center)
@@ -130,35 +189,6 @@ impl App {
 
         frame.render_widget(intro_text, intro_area);
         frame.render_widget(instruct_text, instruct_area);
-    }
-
-    fn user_login(username: &CursoredString, frame: &mut Frame) {
-        const USERNAME_HEIGHT: u16 = 1;
-        const BORDER_SIZE: u16 = 1;
-
-        let [area] = Layout::vertical([Constraint::Length(USERNAME_HEIGHT + 4 * BORDER_SIZE)])
-            .flex(Flex::Center)
-            .areas(frame.area());
-        let [area] = Layout::horizontal([Constraint::Percentage(40)])
-            .flex(Flex::Center)
-            .areas(area);
-        let block = Block::bordered().title("Login");
-        frame.render_widget(block, area);
-        let area = area.inner(Margin::new(BORDER_SIZE, BORDER_SIZE));
-        let [username_area] =
-            Layout::vertical([Constraint::Length(USERNAME_HEIGHT + BORDER_SIZE * 2)]).areas(area);
-
-        let username_field = Block::bordered()
-            .title("Username")
-            .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
-
-        let username_text = Paragraph::new(username.text.to_text()).block(username_field);
-        frame.set_cursor_position(Position::new(
-            username_area.x + username.index as u16 + 1,
-            username_area.y + 1,
-        ));
-
-        frame.render_widget(username_text, username_area);
     }
 
     fn display_log(&mut self, frame: &mut Frame) {
@@ -200,42 +230,57 @@ impl App {
             Paragraph::new(self.status_text.clone()).block(Block::bordered().title("Status")),
             status_area,
         );
-
-        if let Some(popup) = &self.popup {
-            popup.render_to_frame(table_area, frame);
-        }
     }
 
-    pub async fn run(&mut self) -> Result<bool, AppError> {
-        if event::poll(std::time::Duration::from_millis(50))? {
-            if let Some(popup) = self.popup.take() {
-                self.popup = popup.process_event(self, event::read()?).await?;
-            } else if let Event::Key(key) = event::read()? {
-                if key.kind == event::KeyEventKind::Press {
-                    match &mut self.state {
-                        AppState::Intro => {
-                            if self.current_user.is_some() {
-                                self.state = AppState::LogTable;
-                            } else {
-                                self.state = AppState::UserLogin(CursoredString::default());
-                            }
-                            return Ok(true);
-                        }
-                        AppState::UserLogin(_) => {
-                            return self.run_user_login(key).await;
-                        }
-                        AppState::LogTable => return self.run_table(key).await,
+    async fn run_user_login(
+        &mut self,
+        username: &mut Username,
+        key: KeyEvent,
+    ) -> Result<Option<AppState>, AppError> {
+        match key.code {
+            KeyCode::Left => {
+                username.0.prev();
+            }
+            KeyCode::Right => {
+                username.0.next();
+            }
+            KeyCode::Enter if !username.0.text.is_empty() => {
+                match self.storage.get_user(username.0.text.to_lowercase()).await {
+                    Ok(user) => {
+                        self.status_text = format!("Logged in as '{}'", user.name);
+                        self.current_user = Some(user);
+                        self.update_table().await?;
+                        return Ok(Some(AppState::LogTable));
                     }
+                    Err(StorageRunError::RecordMissing) => {
+                        self.popup = Some(Popup::CreateUser(CreateUser::new(Box::from(
+                            username.0.text.as_str(),
+                        ))))
+                    }
+                    Err(e) => return Err(e.into()),
                 }
             }
+            KeyCode::Backspace => username.0.remove_behind(),
+            KeyCode::Delete => username.0.remove_ahead(),
+            KeyCode::Insert => username.0.inserting = !username.0.inserting,
+            KeyCode::Esc => return Ok(Some(AppState::Quitting)),
+            KeyCode::Char(c) if !c.is_whitespace() => username.0.insert(c),
+            _ => (),
         }
-        Ok(true)
+        Ok(None)
     }
 
-    async fn run_table(&mut self, key: KeyEvent) -> Result<bool, AppError> {
+    async fn run_table(&mut self, key: KeyEvent) -> Result<Option<AppState>, AppError> {
         match key.code {
+            KeyCode::Down => self.table_state.select_next(),
+            KeyCode::Up => self.table_state.select_previous(),
             KeyCode::Char('q') => {
-                return Ok(false);
+                return Ok(Some(AppState::Quitting));
+            }
+            KeyCode::Char('o') => {
+                self.current_user = None;
+                self.transactions = vec![];
+                return Ok(Some(AppState::UserLogin(Default::default())));
             }
             KeyCode::Char('a') => {
                 self.popup = Some(Popup::AddTransaction(AddTransaction::default()));
@@ -262,51 +307,41 @@ impl App {
                     self.update_table().await?
                 }
             }
-            KeyCode::Down => self.table_state.select_next(),
-            KeyCode::Up => self.table_state.select_previous(),
             _ => (),
         }
-        Ok(true)
+        Ok(None)
     }
+}
 
-    pub async fn update_table(&mut self) -> Result<(), AppError> {
-        self.transactions = self
-            .storage
-            .get_transactions(self.current_user.as_ref().map(|v| v.id).unwrap(), ..)
-            .await?;
-        Ok(())
-    }
+impl Username {
+    fn user_login(&self, frame: &mut Frame, hide_cursor: bool) {
+        const USERNAME_HEIGHT: u16 = 1;
+        const BORDER_SIZE: u16 = 1;
 
-    async fn run_user_login(&mut self, key: KeyEvent) -> Result<bool, AppError> {
-        let AppState::UserLogin(username) = &mut self.state else {
-            panic!("This will be UserLogin")
-        };
-        match key.code {
-            KeyCode::Left => {
-                username.prev();
-            }
-            KeyCode::Right => {
-                username.next();
-            }
-            KeyCode::Enter => match self.storage.get_user(username.text.to_lowercase()).await {
-                Ok(user) => {
-                    self.status_text = format!("Logged in as {}", user.name);
-                    self.current_user = Some(user);
-                    self.state = AppState::LogTable;
-                    self.update_table().await?;
-                }
-                Err(StorageRunError::RecordMissing) => {
-                    self.popup = Some(Popup::CreateUser(CreateUser::new(username.text.clone())))
-                }
-                Err(e) => return Err(e.into()),
-            },
-            KeyCode::Backspace => username.remove_behind(),
-            KeyCode::Delete => username.remove_ahead(),
-            KeyCode::Insert => username.inserting = !username.inserting,
-            KeyCode::Esc => return Ok(false),
-            KeyCode::Char(c) => username.insert(c),
-            _ => (),
+        let [area] = Layout::vertical([Constraint::Length(USERNAME_HEIGHT + 4 * BORDER_SIZE)])
+            .flex(Flex::Center)
+            .areas(frame.area());
+        let [area] = Layout::horizontal([Constraint::Percentage(40)])
+            .flex(Flex::Center)
+            .areas(area);
+        let block = Block::bordered().title("Login");
+        frame.render_widget(block, area);
+        let area = area.inner(Margin::new(BORDER_SIZE, BORDER_SIZE));
+        let [username_area] =
+            Layout::vertical([Constraint::Length(USERNAME_HEIGHT + BORDER_SIZE * 2)]).areas(area);
+
+        let username_field = Block::bordered()
+            .title("Username")
+            .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
+
+        let username_text = Paragraph::new(self.0.text.to_text()).block(username_field);
+        if !hide_cursor {
+            frame.set_cursor_position(Position::new(
+                username_area.x + self.0.index as u16 + 1,
+                username_area.y + 1,
+            ));
         }
-        Ok(true)
+
+        frame.render_widget(username_text, username_area);
     }
 }

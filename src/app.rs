@@ -104,7 +104,7 @@ impl App {
         match &self.state {
             AppState::Intro => self.play_intro(frame),
             AppState::LogTable => self.display_log(frame),
-            AppState::UserLogin(username) => Self::user_login(&username, frame),
+            AppState::UserLogin(username) => Self::user_login(username, frame),
         }
     }
 

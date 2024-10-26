@@ -4,7 +4,7 @@ use mantra::app::App;
 async fn main() -> anyhow::Result<()> {
     let mut terminal = ratatui::init();
 
-    let mut app = App::init("wrench".into()).await?;
+    let mut app = App::init().await?;
     while app.run().await? {
         terminal.draw(|frame| app.ui(frame))?;
     }

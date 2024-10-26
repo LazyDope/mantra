@@ -1,20 +1,20 @@
-use crossterm::event::{self, Event, KeyCode};
-use deranged::RangedUsize;
+use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use layout::Flex;
 use ratatui::{
     prelude::*,
     widgets::{Block, BorderType, Paragraph, Row, Table, TableState},
 };
+use text::ToText;
 use thiserror::Error;
 
 use crate::{
     config::{Config, ConfigError},
     storage::{Storage, StorageLoadError, StorageRunError},
-    Transaction, User,
+    CursoredString, Transaction, User,
 };
 
 pub mod popups;
-use popups::{AddTransaction, Popup};
+use popups::{AddTransaction, CreateUser, Popup};
 
 const MANTRA_INTRO: &str = r"  __       __   ______   __    __        __  ________  _______    ______   
  /  \     /  | /      \ /  \  /  |      /  |/        |/       \  /      \  
@@ -62,12 +62,28 @@ pub enum AppError {
 
 pub enum AppState {
     Intro,
-    UserLogin,
+    UserLogin(CursoredString),
     LogTable,
 }
 
 impl App {
-    pub async fn init(username: String) -> Result<Self, AppInitError> {
+    pub async fn init() -> Result<Self, AppInitError> {
+        let config = Config::load_or_create();
+        let storage = Storage::load_or_create().await?;
+        Ok(App {
+            config: config.await?,
+            transactions: vec![],
+            storage,
+            current_user: None,
+            table_state: TableState::default(),
+            status_text: String::new(),
+            popup: None,
+            state: AppState::Intro,
+            animation_progress: 0,
+        })
+    }
+
+    pub async fn init_with_username(username: String) -> Result<Self, AppInitError> {
         let config = Config::load_or_create();
         let storage = Storage::load_or_create().await?;
         let user = storage.get_or_create_user(username.to_lowercase()).await?;
@@ -85,14 +101,14 @@ impl App {
     }
 
     pub fn ui(&mut self, frame: &mut Frame<'_>) {
-        match self.state {
-            AppState::Intro => self.run_intro(frame),
+        match &self.state {
+            AppState::Intro => self.play_intro(frame),
             AppState::LogTable => self.display_log(frame),
-            AppState::UserLogin => todo!(),
+            AppState::UserLogin(username) => Self::user_login(&username, frame),
         }
     }
 
-    fn run_intro(&mut self, frame: &mut Frame<'_>) {
+    fn play_intro(&mut self, frame: &mut Frame<'_>) {
         self.animation_progress = self
             .animation_progress
             .saturating_add(frame.count() / 4)
@@ -114,6 +130,35 @@ impl App {
 
         frame.render_widget(intro_text, intro_area);
         frame.render_widget(instruct_text, instruct_area);
+    }
+
+    fn user_login(username: &CursoredString, frame: &mut Frame) {
+        const USERNAME_HEIGHT: u16 = 1;
+        const BORDER_SIZE: u16 = 1;
+
+        let [area] = Layout::vertical([Constraint::Length(USERNAME_HEIGHT + 4 * BORDER_SIZE)])
+            .flex(Flex::Center)
+            .areas(frame.area());
+        let [area] = Layout::horizontal([Constraint::Percentage(40)])
+            .flex(Flex::Center)
+            .areas(area);
+        let block = Block::bordered().title("Login");
+        frame.render_widget(block, area);
+        let area = area.inner(Margin::new(BORDER_SIZE, BORDER_SIZE));
+        let [username_area] =
+            Layout::vertical([Constraint::Length(USERNAME_HEIGHT + BORDER_SIZE * 2)]).areas(area);
+
+        let username_field = Block::bordered()
+            .title("Username")
+            .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
+
+        let username_text = Paragraph::new(username.text.to_text()).block(username_field);
+        frame.set_cursor_position(Position::new(
+            username_area.x + username.index as u16 + 1,
+            username_area.y + 1,
+        ));
+
+        frame.render_widget(username_text, username_area);
     }
 
     fn display_log(&mut self, frame: &mut Frame) {
@@ -167,47 +212,59 @@ impl App {
                 self.popup = popup.process_event(self, event::read()?).await?;
             } else if let Event::Key(key) = event::read()? {
                 if key.kind == event::KeyEventKind::Press {
-                    if let AppState::Intro = self.state {
-                        self.state = AppState::UserLogin;
-                        return Ok(true);
-                    }
-                    match key.code {
-                        KeyCode::Char('q') => {
-                            return Ok(false);
-                        }
-                        KeyCode::Char('a') => {
-                            self.popup = Some(Popup::AddTransaction(AddTransaction::default()));
-                        }
-                        KeyCode::Char('c') => {
-                            self.storage
-                                .remove_transactions(&format!(
-                                    "user_id = {}",
-                                    self.current_user.as_ref().map(|v| v.id).unwrap()
-                                ))
-                                .await?;
-
-                            self.status_text = String::from("Cleared log");
-                            self.update_table().await?;
-                        }
-                        KeyCode::Char('d') => {
-                            if let Some(index) = self.table_state.selected() {
-                                let transaction = &self.transactions[index];
-                                self.storage
-                                    .remove_transactions(&format!("id = {}", transaction.trans_id))
-                                    .await?;
-                                self.status_text = format!(
-                                    "Deleted \"{} | {}\"",
-                                    transaction.value, transaction.msg
-                                );
-                                self.update_table().await?
+                    match &mut self.state {
+                        AppState::Intro => {
+                            if self.current_user.is_some() {
+                                self.state = AppState::LogTable;
+                            } else {
+                                self.state = AppState::UserLogin(CursoredString::default());
                             }
+                            return Ok(true);
                         }
-                        KeyCode::Down => self.table_state.select_next(),
-                        KeyCode::Up => self.table_state.select_previous(),
-                        _ => (),
+                        AppState::UserLogin(_) => {
+                            return self.run_user_login(key).await;
+                        }
+                        AppState::LogTable => return self.run_table(key).await,
                     }
                 }
             }
+        }
+        Ok(true)
+    }
+
+    async fn run_table(&mut self, key: KeyEvent) -> Result<bool, AppError> {
+        match key.code {
+            KeyCode::Char('q') => {
+                return Ok(false);
+            }
+            KeyCode::Char('a') => {
+                self.popup = Some(Popup::AddTransaction(AddTransaction::default()));
+            }
+            KeyCode::Char('c') => {
+                self.storage
+                    .remove_transactions(&format!(
+                        "user_id = {}",
+                        self.current_user.as_ref().map(|v| v.id).unwrap()
+                    ))
+                    .await?;
+
+                self.status_text = String::from("Cleared log");
+                self.update_table().await?;
+            }
+            KeyCode::Char('d') => {
+                if let Some(index) = self.table_state.selected() {
+                    let transaction = &self.transactions[index];
+                    self.storage
+                        .remove_transactions(&format!("id = {}", transaction.trans_id))
+                        .await?;
+                    self.status_text =
+                        format!("Deleted \"{} | {}\"", transaction.value, transaction.msg);
+                    self.update_table().await?
+                }
+            }
+            KeyCode::Down => self.table_state.select_next(),
+            KeyCode::Up => self.table_state.select_previous(),
+            _ => (),
         }
         Ok(true)
     }
@@ -218,5 +275,38 @@ impl App {
             .get_transactions(self.current_user.as_ref().map(|v| v.id).unwrap(), ..)
             .await?;
         Ok(())
+    }
+
+    async fn run_user_login(&mut self, key: KeyEvent) -> Result<bool, AppError> {
+        let AppState::UserLogin(username) = &mut self.state else {
+            panic!("This will be UserLogin")
+        };
+        match key.code {
+            KeyCode::Left => {
+                username.prev();
+            }
+            KeyCode::Right => {
+                username.next();
+            }
+            KeyCode::Enter => match self.storage.get_user(username.text.to_lowercase()).await {
+                Ok(user) => {
+                    self.status_text = format!("Logged in as {}", user.name);
+                    self.current_user = Some(user);
+                    self.state = AppState::LogTable;
+                    self.update_table().await?;
+                }
+                Err(StorageRunError::RecordMissing) => {
+                    self.popup = Some(Popup::CreateUser(CreateUser::new(username.text.clone())))
+                }
+                Err(e) => return Err(e.into()),
+            },
+            KeyCode::Backspace => username.remove_behind(),
+            KeyCode::Delete => username.remove_ahead(),
+            KeyCode::Insert => username.inserting = !username.inserting,
+            KeyCode::Esc => return Ok(false),
+            KeyCode::Char(c) => username.insert(c),
+            _ => (),
+        }
+        Ok(true)
     }
 }

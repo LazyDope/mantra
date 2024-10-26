@@ -6,7 +6,7 @@ use ratatui::{
 };
 use text::ToText;
 
-use super::CursoredString;
+use crate::CursoredString;
 use crate::{
     app::{App, AppError},
     TransactionType,

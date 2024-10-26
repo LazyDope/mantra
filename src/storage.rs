@@ -173,6 +173,10 @@ impl Storage {
             .await
             .expect("Should be able to insert a new user");
 
+        self.get_user(username).await
+    }
+
+    pub async fn get_user(&self, username: String) -> Result<User, StorageRunError> {
         let query_statement = "SELECT id, name FROM users WHERE name=$1";
         let query = sqlx::query(query_statement).bind(username);
 

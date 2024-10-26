@@ -35,6 +35,24 @@ fn base_dirs() -> Result<BaseDirectories, xdg::BaseDirectoriesError> {
     BaseDirectories::with_prefix("mantra")
 }
 
+impl TransactionType {
+    fn next(self) -> Self {
+        use TransactionType::*;
+        match self {
+            Other => Character,
+            Character => Other,
+        }
+    }
+
+    fn prev(self) -> Self {
+        use TransactionType::*;
+        match self {
+            Other => Character,
+            Character => Other,
+        }
+    }
+}
+
 impl TryFrom<i32> for TransactionType {
     type Error = MissingType;
 

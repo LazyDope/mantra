@@ -1,4 +1,5 @@
 use crossterm::event::{self, Event, KeyCode};
+use deranged::RangedUsize;
 use layout::Flex;
 use ratatui::{
     prelude::*,
@@ -35,7 +36,8 @@ pub struct App {
     table_state: TableState,
     status_text: String,
     popup: Option<Popup>,
-    active: bool,
+    state: AppState,
+    animation_progress: usize,
 }
 
 #[derive(Error, Debug)]
@@ -58,6 +60,12 @@ pub enum AppError {
     ParseIntError(#[from] std::num::ParseIntError),
 }
 
+pub enum AppState {
+    Intro,
+    UserLogin,
+    LogTable,
+}
+
 impl App {
     pub async fn init(username: String) -> Result<Self, AppInitError> {
         let config = Config::load_or_create();
@@ -71,33 +79,44 @@ impl App {
             table_state: TableState::default(),
             status_text: String::new(),
             popup: None,
-            active: false,
+            state: AppState::Intro,
+            animation_progress: 0,
         })
     }
 
     pub fn ui(&mut self, frame: &mut Frame<'_>) {
-        let area = frame.area();
-        if !self.active {
-            let text_progress = &MANTRA_INTRO[0..(frame.count() * 5).clamp(0, MANTRA_INTRO.len())];
-            let [intro_area, instruct_area] =
-                Layout::vertical([Constraint::Length(INTRO_HEIGHT + 4), Constraint::Length(3)])
-                    .flex(Flex::Center)
-                    .areas(
-                        Layout::horizontal([Constraint::Length(INTRO_WIDTH)])
-                            .flex(Flex::Center)
-                            .areas::<1>(area)[0],
-                    );
-            let intro_text = Paragraph::new(text_progress)
-                .block(Block::bordered().border_type(BorderType::Thick));
-            let instruct_text = Paragraph::new("Press any key to start")
-                .block(Block::bordered())
-                .alignment(Alignment::Center);
-
-            frame.render_widget(intro_text, intro_area);
-            frame.render_widget(instruct_text, instruct_area);
-
-            return;
+        match self.state {
+            AppState::Intro => self.run_intro(frame),
+            AppState::LogTable => self.display_log(frame),
+            AppState::UserLogin => todo!(),
         }
+    }
+
+    fn run_intro(&mut self, frame: &mut Frame<'_>) {
+        self.animation_progress = self
+            .animation_progress
+            .saturating_add(frame.count() / 4)
+            .clamp(0, MANTRA_INTRO.len());
+        let text_progress = &MANTRA_INTRO[0..self.animation_progress];
+        let [intro_area, instruct_area] =
+            Layout::vertical([Constraint::Length(INTRO_HEIGHT + 4), Constraint::Length(3)])
+                .flex(Flex::Center)
+                .areas(
+                    Layout::horizontal([Constraint::Length(INTRO_WIDTH)])
+                        .flex(Flex::Center)
+                        .areas::<1>(frame.area())[0],
+                );
+        let intro_text =
+            Paragraph::new(text_progress).block(Block::bordered().border_type(BorderType::Thick));
+        let instruct_text = Paragraph::new("Press any key to start")
+            .block(Block::bordered())
+            .alignment(Alignment::Center);
+
+        frame.render_widget(intro_text, intro_area);
+        frame.render_widget(instruct_text, instruct_area);
+    }
+
+    fn display_log(&mut self, frame: &mut Frame) {
         let widths = [
             Constraint::Fill(1),
             Constraint::Fill(3),
@@ -130,7 +149,7 @@ impl App {
             .header(Row::new(["Amount", "Note", "Date/Time"]).underlined())
             .highlight_style(Style::new().black().on_white());
         let [table_area, status_area] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(3)]).areas(area);
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(3)]).areas(frame.area());
         frame.render_stateful_widget(&table_widget, table_area, &mut self.table_state);
         frame.render_widget(
             Paragraph::new(self.status_text.clone()).block(Block::bordered().title("Status")),
@@ -148,8 +167,8 @@ impl App {
                 self.popup = popup.process_event(self, event::read()?).await?;
             } else if let Event::Key(key) = event::read()? {
                 if key.kind == event::KeyEventKind::Press {
-                    if !self.active {
-                        self.active = true;
+                    if let AppState::Intro = self.state {
+                        self.state = AppState::UserLogin;
                         return Ok(true);
                     }
                     match key.code {

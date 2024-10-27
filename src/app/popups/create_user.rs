@@ -11,12 +11,15 @@ use crate::app::{App, AppError, AppMode};
 
 use super::Popup;
 
+/// Popup for confirming new user creation
 pub struct CreateUser {
     new_user: String,
     should_create: bool,
 }
 
 impl CreateUser {
+    /// Create popup with 'Yes' selected by default.
+    /// Internal buffer can't and won't actually be mutated but it's cheaper to pass the string we have than make a new immutable copy.
     pub fn new(new_user: String) -> Self {
         Self {
             new_user,
@@ -24,6 +27,7 @@ impl CreateUser {
         }
     }
 
+    /// Handle incoming key events
     pub(crate) async fn process_event(
         mut self,
         app: &mut App,
@@ -57,6 +61,7 @@ impl CreateUser {
         Ok(Some(Popup::CreateUser(self)))
     }
 
+    /// Display popup on top of existing [`Frame`]
     pub(crate) fn render_to_frame(&self, area: Rect, frame: &mut Frame) {
         const QUESTION_HEIGHT: u16 = 1;
         const BORDER_SIZE: u16 = 1;

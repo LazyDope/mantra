@@ -1,3 +1,4 @@
+//! This module interfaces with the local sqlite database
 use std::{
     fmt::Display,
     ops::{Bound, RangeBounds},
@@ -11,6 +12,7 @@ use strum::{Display, EnumCount, VariantNames};
 use thiserror::Error;
 use time::PrimitiveDateTime;
 
+/// Wrapper for the sqlite database
 pub struct Storage {
     db: SqlitePool,
 }
@@ -42,6 +44,7 @@ pub enum TransactionType {
     MissionReward,
 }
 
+/// Possible errors that may occur when first loading the db from the sqlite file
 #[derive(Error, Debug)]
 pub enum StorageLoadError {
     #[error(transparent)]
@@ -52,6 +55,7 @@ pub enum StorageLoadError {
     DB(#[from] sqlx::Error),
 }
 
+/// Possible errors that may occur when accessing the active db
 #[derive(Error, Debug)]
 pub enum StorageRunError {
     #[error(transparent)]
@@ -61,6 +65,7 @@ pub enum StorageRunError {
 }
 
 impl Storage {
+    /// Load the db from known location, or create new with table set up
     pub async fn load_or_create() -> Result<Self, StorageLoadError> {
         let db_path = super::base_dirs()?.place_data_file("log.db")?;
         let db_url = format!("sqlite://{}", db_path.display());
@@ -70,6 +75,8 @@ impl Storage {
         };
 
         let db = SqlitePool::connect(&db_url).await?;
+
+        // transaction table, all rows must be filled and non-null except the message
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS transactions (\
                 id INTEGER PRIMARY KEY NOT NULL,\
@@ -82,6 +89,8 @@ impl Storage {
         )
         .execute(&db)
         .await?;
+
+        // user table, usernames must be unique, but still better to identify by an id internally
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS users (\
                 id INTEGER PRIMARY KEY NOT NULL,\
@@ -93,6 +102,7 @@ impl Storage {
         Ok(Storage { db })
     }
 
+    /// Adds a new transaction to the database using the current time
     pub async fn add_transaction(
         &self,
         user: i32,
@@ -116,6 +126,8 @@ impl Storage {
         Ok(())
     }
 
+    /// Removes all transactions that match a filter.
+    /// Do not pass user input directly into this function.
     pub async fn remove_transactions(&self, filter: &str) -> Result<(), StorageRunError> {
         sqlx::query(&format!("DELETE FROM transactions WHERE {filter}"))
             .execute(&self.db)
@@ -123,6 +135,7 @@ impl Storage {
         Ok(())
     }
 
+    /// Get all transactions for a user within a date range
     pub async fn get_transactions<DT>(
         &self,
         user: i32,
@@ -208,6 +221,7 @@ impl Storage {
         Ok(())
     }
 
+    /// Gets a user if they exist, otherwise errors
     pub async fn get_user(&self, username: &str) -> Result<User, StorageRunError> {
         let query_statement = "SELECT id, name FROM users WHERE name=$1";
         let query = sqlx::query(query_statement).bind(username);
@@ -225,16 +239,19 @@ impl Storage {
 }
 
 impl User {
+    /// Returns the table id of the user
     pub fn get_id(&self) -> i32 {
         self.id
     }
 
+    /// Returns a string slice of the username
     pub fn get_name(&self) -> &str {
         &self.name
     }
 }
 
 impl TransactionType {
+    /// Returns the next type of transaction from the enum
     pub fn next(self) -> Self {
         FromPrimitive::from_isize(
             (self as isize + 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
@@ -242,6 +259,7 @@ impl TransactionType {
         .expect("Will always be a valid i8 unless TransactionType became an empty enum")
     }
 
+    /// Returns the previous type of transaction from the enum
     pub fn prev(self) -> Self {
         FromPrimitive::from_isize(
             (self as isize - 1).rem_euclid(<Self as EnumCount>::COUNT as isize),

@@ -10,6 +10,7 @@ use time::UtcOffset;
 
 mod config_serde;
 
+/// Possible errors while loading a [`Config`] from a file
 #[derive(Error, Debug)]
 pub enum ConfigError {
     #[error(transparent)]
@@ -20,6 +21,7 @@ pub enum ConfigError {
     Serde(#[from] serde_yaml::Error),
 }
 
+/// Configuration for the [`App`] to use
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub currency: Currency,
@@ -27,6 +29,7 @@ pub struct Config {
     pub timezone: UtcOffset,
 }
 
+/// Configuration for currency type, optional short form
 #[derive(Serialize, Deserialize)]
 pub struct Currency {
     pub long: String,
@@ -34,6 +37,7 @@ pub struct Currency {
 }
 
 impl Config {
+    /// A default configuration for Manna and local/UTC time (current_local_offset doesn't work on linux)
     pub fn new() -> Self {
         Self {
             currency: "Manna".into(),
@@ -41,6 +45,7 @@ impl Config {
         }
     }
 
+    /// Loads or creates a default config in the mantra xdg directory
     pub async fn load_or_create() -> Result<Config, ConfigError> {
         let config_path = super::base_dirs()?.place_config_file("config.yaml")?;
         let config_file = match File::open(&config_path) {

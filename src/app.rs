@@ -1,4 +1,4 @@
-//! This module provides the front end application
+//! This module provides the front end application through the [`App`] type
 use crossterm::event::{self, Event, KeyCode, KeyEvent};
 use layout::Flex;
 use ratatui::{

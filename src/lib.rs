@@ -8,7 +8,6 @@ use xdg::BaseDirectories;
 
 pub mod app;
 pub mod config;
-/// This module interfaces with the local sqlite database
 pub mod storage;
 
 /// grabs the XDG dirs

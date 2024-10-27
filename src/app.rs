@@ -63,11 +63,11 @@ pub enum AppInitError {
 #[derive(Error, Debug)]
 pub enum AppError {
     #[error(transparent)]
-    IoError(#[from] std::io::Error),
+    Io(#[from] std::io::Error),
     #[error(transparent)]
-    StorageRunError(#[from] StorageRunError),
+    StorageRun(#[from] StorageRunError),
     #[error(transparent)]
-    ParseIntError(#[from] std::num::ParseIntError),
+    ParseInt(#[from] std::num::ParseIntError),
 }
 
 /// Modes of [`App`]

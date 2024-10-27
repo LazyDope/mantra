@@ -1,3 +1,4 @@
+//! Handler for popups
 use crossterm::event::Event;
 use ratatui::prelude::*;
 

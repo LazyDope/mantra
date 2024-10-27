@@ -10,7 +10,7 @@ pub mod app;
 pub mod config;
 pub mod storage;
 
-/// grabs the XDG dirs
+/// Grabs the XDG dirs
 pub fn base_dirs() -> Result<BaseDirectories, xdg::BaseDirectoriesError> {
     BaseDirectories::with_prefix("mantra")
 }

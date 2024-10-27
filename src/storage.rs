@@ -1,6 +1,7 @@
 //! This module interfaces with the local sqlite database
 use std::{
     fmt::Display,
+    marker::PhantomData,
     ops::{Bound, RangeBounds},
 };
 
@@ -33,7 +34,9 @@ pub struct Transaction {
     pub msg: String,
 }
 
-pub struct MissingType;
+/// Unit error that may occur when converting type id to the enum variant
+#[derive(Error)]
+pub struct MissingVariant<T, U>(T, PhantomData<U>);
 
 /// The type of a transaction, used for filtering
 #[derive(Default, VariantNames, EnumCount, Clone, Copy, Display, FromPrimitive)]
@@ -269,15 +272,29 @@ impl TransactionType {
 }
 
 impl TryFrom<i32> for TransactionType {
-    type Error = MissingType;
+    type Error = MissingVariant<i32, Self>;
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
-        FromPrimitive::from_i32(value).ok_or(MissingType)
+        FromPrimitive::from_i32(value).ok_or(MissingVariant(value, PhantomData))
     }
 }
 
 impl Display for User {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.name.fmt(f)
+    }
+}
+
+impl<T, U> Display for MissingVariant<T, U>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Missing Variant for: {} in {}",
+            self.0,
+            std::any::type_name::<U>()
+        )
     }
 }

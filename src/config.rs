@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use time::UtcOffset;
 
+#[cfg(doc)]
+use crate::app::App;
+
 mod config_serde;
 
 /// Possible errors while loading a [`Config`] from a file

@@ -1,4 +1,4 @@
-pub mod utc_offset {
+pub(crate) mod utc_offset {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use time::UtcOffset;
 

@@ -1,19 +1,21 @@
-use crossterm::event::{self, Event, KeyCode, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode};
 use ratatui::{
     layout::Flex,
     prelude::*,
-    widgets::{Block, Clear, Paragraph},
+    widgets::{Block, Clear, Paragraph, Tabs, Wrap},
 };
+use strum::VariantNames;
 use text::ToText;
 
 use crate::CursoredString;
 use crate::{
     app::{App, AppError},
-    TransactionType,
+    storage::TransactionType,
 };
 
 use super::Popup;
 
+/// Handles the creation of new transactions
 #[derive(Default)]
 pub struct AddTransaction {
     pub trans_type: TransactionType,
@@ -22,6 +24,7 @@ pub struct AddTransaction {
     pub selected_field: AddTransactionField,
 }
 
+/// Selectable fields for [`AddTransaction`]
 #[derive(Default, PartialEq, Eq)]
 pub enum AddTransactionField {
     #[default]
@@ -31,22 +34,8 @@ pub enum AddTransactionField {
     Submit,
 }
 
-fn get_modified_value(modifiers: KeyModifiers) -> i32 {
-    let mut value = 1;
-    if modifiers.contains(KeyModifiers::SHIFT) {
-        value *= 5;
-    }
-    if modifiers.contains(KeyModifiers::CONTROL) {
-        value *= 50;
-    }
-    if modifiers.contains(KeyModifiers::ALT) {
-        value *= 200;
-    }
-
-    value
-}
-
 impl AddTransaction {
+    /// Handles incoming key events and updates log table when submitted
     pub(crate) async fn process_event(
         mut self,
         app: &mut App,
@@ -63,7 +52,7 @@ impl AddTransaction {
                     }
                     KeyCode::Left => match self.selected_field {
                         AddTransactionField::Amount => {
-                            self.amount -= get_modified_value(key.modifiers);
+                            self.amount -= crate::value_from_modifiers(key.modifiers);
                         }
                         AddTransactionField::Message => self.msg.prev(),
                         AddTransactionField::TransactionType => {
@@ -73,7 +62,7 @@ impl AddTransaction {
                     },
                     KeyCode::Right => match self.selected_field {
                         AddTransactionField::Amount => {
-                            self.amount += get_modified_value(key.modifiers);
+                            self.amount += crate::value_from_modifiers(key.modifiers);
                         }
                         AddTransactionField::Message => self.msg.next(),
                         AddTransactionField::TransactionType => {
@@ -92,10 +81,10 @@ impl AddTransaction {
                             app.data
                                 .storage
                                 .add_transaction(
-                                    app.data.current_user.as_ref().map(|v| v.id).unwrap(),
+                                    app.data.current_user.as_ref().map(|v| v.get_id()).unwrap(),
                                     amount,
                                     trans_type,
-                                    &msg.text,
+                                    &msg.buf,
                                 )
                                 .await?;
 
@@ -105,23 +94,27 @@ impl AddTransaction {
                         }
                         _ => self.selected_field.next(),
                     },
-                    KeyCode::Backspace => match self.selected_field {
-                        AddTransactionField::Message => self.msg.remove_behind(),
-                        _ => (),
-                    },
-                    KeyCode::Delete => match self.selected_field {
-                        AddTransactionField::Message => self.msg.remove_ahead(),
-                        _ => (),
-                    },
-                    KeyCode::Insert => match self.selected_field {
-                        AddTransactionField::Message => self.msg.inserting = !self.msg.inserting,
-                        _ => (),
-                    },
+                    KeyCode::Backspace => {
+                        if let AddTransactionField::Message = self.selected_field {
+                            self.msg.remove_behind()
+                        }
+                    }
+                    KeyCode::Delete => {
+                        if let AddTransactionField::Message = self.selected_field {
+                            self.msg.remove_ahead()
+                        }
+                    }
+                    KeyCode::Insert => {
+                        if let AddTransactionField::Message = self.selected_field {
+                            self.msg.inserting = !self.msg.inserting
+                        }
+                    }
                     KeyCode::Esc => return Ok(None),
-                    KeyCode::Char(c) => match self.selected_field {
-                        AddTransactionField::Message => self.msg.insert(c),
-                        _ => (),
-                    },
+                    KeyCode::Char(c) => {
+                        if let AddTransactionField::Message = self.selected_field {
+                            self.msg.insert(c)
+                        }
+                    }
                     _ => (),
                 }
             }
@@ -129,6 +122,7 @@ impl AddTransaction {
         Ok(Some(Popup::AddTransaction(self)))
     }
 
+    /// Handles the rendering of the popup to the given [`Frame`]
     pub(super) fn render_to_frame(&self, area: ratatui::prelude::Rect, frame: &mut Frame)
     where
         Self: Sized,
@@ -181,18 +175,28 @@ impl AddTransaction {
                 Amount => amount_field = amount_field.style(active_style),
                 Message => {
                     msg_field = msg_field.style(active_style);
+                    let inner_area = msg_area.inner(Margin {
+                        horizontal: 1,
+                        vertical: 1,
+                    });
+                    let mapped_index = (msg.cursor_index() as u16)
+                        .clamp(0, inner_area.width * inner_area.height - 1);
                     frame.set_cursor_position(Position::new(
-                        msg_area.x + msg.index as u16 + 1,
-                        msg_area.y + 1,
+                        msg_area.x + mapped_index % inner_area.width + 1,
+                        msg_area.y + mapped_index / inner_area.width + 1,
                     ));
                 }
                 Submit => submit_field = submit_field.style(active_style),
             };
         }
 
-        let type_text = Paragraph::new(trans_type.to_text()).block(type_field);
+        let type_text = Tabs::new(<TransactionType as VariantNames>::VARIANTS.iter().copied())
+            .select(*trans_type as usize)
+            .block(type_field);
         let amount_text = Paragraph::new(amount.to_text()).block(amount_field);
-        let msg_text = Paragraph::new(msg.to_text()).block(msg_field);
+        let msg_text = Paragraph::new(msg.as_str())
+            .wrap(Wrap { trim: false })
+            .block(msg_field);
         let submit_text = Paragraph::new(SUBMIT_TEXT)
             .block(submit_field)
             .alignment(Alignment::Center);

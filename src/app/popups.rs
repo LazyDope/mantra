@@ -8,12 +8,14 @@ pub use add_transaction::*;
 mod create_user;
 pub use create_user::*;
 
+/// Types of popup that can be displayed
 pub enum Popup {
     AddTransaction(AddTransaction),
     CreateUser(CreateUser),
 }
 
 impl Popup {
+    /// Passes the event along to the individual popup type
     pub async fn process_event(
         self,
         app: &mut App,
@@ -25,6 +27,7 @@ impl Popup {
         }
     }
 
+    /// Passes the rendering along to the individual popup type
     pub fn render_to_frame(&self, area: Rect, frame: &mut Frame)
     where
         Self: Sized,

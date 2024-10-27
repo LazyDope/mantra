@@ -1,13 +1,43 @@
-use std::ops::{Bound, RangeBounds};
+use std::{
+    fmt::Display,
+    ops::{Bound, RangeBounds},
+};
 
 use async_std::stream::StreamExt;
 use sqlx::{migrate::MigrateDatabase, Row, Sqlite, SqlitePool};
+use strum::{Display, VariantNames};
 use thiserror::Error;
-
-use crate::{Transaction, TransactionType, User};
+use time::PrimitiveDateTime;
 
 pub struct Storage {
     db: SqlitePool,
+}
+
+/// A valid user from the database
+pub struct User {
+    id: i32,
+    name: String,
+}
+
+/// Transaction from the database
+pub struct Transaction {
+    pub trans_id: i32,
+    pub datetime: PrimitiveDateTime,
+    pub user_id: i32,
+    pub value: i32,
+    pub transaction_type: TransactionType,
+    pub msg: String,
+}
+
+pub struct MissingType;
+
+/// The type of a transaction, used for filtering
+#[derive(Default, VariantNames, Clone, Copy, Display)]
+pub enum TransactionType {
+    #[default]
+    Other = 0,
+    Character = 1,
+    MissionReward = 2,
 }
 
 #[derive(Error, Debug)]
@@ -165,18 +195,18 @@ impl Storage {
             .await)
     }
 
-    pub async fn get_or_create_user(&self, username: String) -> Result<User, StorageRunError> {
+    /// Creates a new user, doing nothing if one already exists with the same name
+    pub async fn create_user(&self, username: &str) -> Result<(), StorageRunError> {
         let insert_statement = "INSERT OR IGNORE INTO users (name) VALUES ($1)";
-        let insert = sqlx::query(insert_statement).bind(&username);
+        let insert = sqlx::query(insert_statement).bind(username);
         insert
             .execute(&self.db)
             .await
             .expect("Should be able to insert a new user");
-
-        self.get_user(username).await
+        Ok(())
     }
 
-    pub async fn get_user(&self, username: String) -> Result<User, StorageRunError> {
+    pub async fn get_user(&self, username: &str) -> Result<User, StorageRunError> {
         let query_statement = "SELECT id, name FROM users WHERE name=$1";
         let query = sqlx::query(query_statement).bind(username);
 
@@ -189,5 +219,53 @@ impl Storage {
             id: user_record.get("id"),
             name: user_record.get("name"),
         })
+    }
+}
+
+impl User {
+    pub fn get_id(&self) -> i32 {
+        self.id
+    }
+
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl TransactionType {
+    pub fn next(self) -> Self {
+        use TransactionType::*;
+        match self {
+            Other => Character,
+            Character => MissionReward,
+            MissionReward => Other,
+        }
+    }
+
+    pub fn prev(self) -> Self {
+        use TransactionType::*;
+        match self {
+            Other => MissionReward,
+            Character => Other,
+            MissionReward => Character,
+        }
+    }
+}
+
+impl TryFrom<i32> for TransactionType {
+    type Error = MissingType;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Other),
+            1 => Ok(Self::Character),
+            _ => Err(MissingType),
+        }
+    }
+}
+
+impl Display for User {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.name.fmt(f)
     }
 }

@@ -7,17 +7,17 @@ use ratatui::{
     Frame,
 };
 
-use crate::app::{App, AppError, AppState};
+use crate::app::{App, AppError, AppMode};
 
 use super::Popup;
 
 pub struct CreateUser {
-    new_user: Box<str>,
+    new_user: String,
     should_create: bool,
 }
 
 impl CreateUser {
-    pub fn new(new_user: Box<str>) -> Self {
+    pub fn new(new_user: String) -> Self {
         Self {
             new_user,
             should_create: true,
@@ -40,14 +40,11 @@ impl CreateUser {
                     }
                     KeyCode::Enter => {
                         if self.should_create {
-                            let user = app
-                                .data
-                                .storage
-                                .get_or_create_user(self.new_user.to_lowercase())
-                                .await?;
-                            app.data.status_text = format!("Logged in as {}", user.name);
+                            app.data.storage.create_user(&self.new_user).await?;
+                            let user = app.data.storage.get_user(&self.new_user).await?;
+                            app.data.status_text = format!("Logged in as {}", user.get_name());
                             app.data.current_user = Some(user);
-                            app.state = AppState::LogTable;
+                            app.mode = AppMode::LogTable;
                             app.data.update_table().await?;
                         };
                         return Ok(None);

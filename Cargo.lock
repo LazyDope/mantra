@@ -954,6 +954,7 @@ dependencies = [
  "serde",
  "serde_yaml",
  "sqlx",
+ "strum",
  "thiserror",
  "time",
  "xdg",

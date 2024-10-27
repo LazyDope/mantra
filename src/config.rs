@@ -1,3 +1,4 @@
+//! This module provides configuration data and serialization
 use std::{
     fs::File,
     io::{Seek, SeekFrom},
@@ -6,6 +7,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use time::UtcOffset;
+
+mod config_serde;
 
 #[derive(Error, Debug)]
 pub enum ConfigError {
@@ -20,7 +23,7 @@ pub enum ConfigError {
 #[derive(Serialize, Deserialize)]
 pub struct Config {
     pub currency: Currency,
-    #[serde(with = "crate::serde::utc_offset")]
+    #[serde(with = "config_serde::utc_offset")]
     pub timezone: UtcOffset,
 }
 
@@ -31,7 +34,7 @@ pub struct Currency {
 }
 
 impl Config {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             currency: "Manna".into(),
             timezone: UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC),

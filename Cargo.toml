@@ -14,6 +14,7 @@ ratatui = "0.28.1"
 serde = { version = "1.0.209", features = ["derive"] }
 serde_yaml = "0.9.34"
 sqlx = { version = "0.8.1", features = ["sqlite", "runtime-async-std", "time"] }
+strum = { version = "0.26.3", features = ["derive"] }
 thiserror = "1.0.63"
 time = { version = "0.3.36", features = ["formatting", "local-offset"] }
 xdg = "2.5.2"

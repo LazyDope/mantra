@@ -339,17 +339,6 @@ impl AppData {
             KeyCode::Char('a') => {
                 self.popup = Some(Popup::AddTransaction(AddTransaction::default()));
             }
-            KeyCode::Char('c') => {
-                self.storage
-                    .remove_transactions(&format!(
-                        "user_id = {}",
-                        self.current_user.as_ref().map(|v| v.get_id()).unwrap()
-                    ))
-                    .await?;
-
-                self.status_text = String::from("Cleared log");
-                self.update_table().await?;
-            }
             KeyCode::Char('d') => {
                 if let Some(index) = self.table_state.selected() {
                     let transaction = &self.transactions[index];

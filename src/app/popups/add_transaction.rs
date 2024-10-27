@@ -1,10 +1,12 @@
 use crossterm::event::{self, Event, KeyCode};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use ratatui::{
     layout::Flex,
     prelude::*,
     widgets::{Block, Clear, Paragraph, Tabs, Wrap},
 };
-use strum::VariantNames;
+use strum::{EnumCount, VariantNames};
 use text::ToText;
 
 use crate::CursoredString;
@@ -25,10 +27,10 @@ pub struct AddTransaction {
 }
 
 /// Selectable fields for [`AddTransaction`]
-#[derive(Default, PartialEq, Eq)]
+#[derive(Default, PartialEq, Eq, FromPrimitive, EnumCount, Clone, Copy)]
 pub enum AddTransactionField {
     #[default]
-    TransactionType,
+    TransactionType = 0,
     Amount,
     Message,
     Submit,
@@ -217,22 +219,16 @@ impl AddTransaction {
 
 impl AddTransactionField {
     fn next(&mut self) {
-        use AddTransactionField::*;
-        *self = match self {
-            TransactionType => Amount,
-            Amount => Message,
-            Message => Submit,
-            Submit => TransactionType,
-        }
+        *self = FromPrimitive::from_isize(
+            (*self as isize + 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
+        )
+        .expect("Will always be a valid isize unless AddTransactionField became an empty enum")
     }
 
     fn prev(&mut self) {
-        use AddTransactionField::*;
-        *self = match self {
-            TransactionType => Submit,
-            Amount => TransactionType,
-            Message => Amount,
-            Submit => Message,
-        }
+        *self = FromPrimitive::from_isize(
+            (*self as isize - 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
+        )
+        .expect("Will always be a valid isize unless AddTransactionField became an empty enum")
     }
 }

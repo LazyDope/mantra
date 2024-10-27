@@ -236,13 +236,17 @@ impl User {
 
 impl TransactionType {
     pub fn next(self) -> Self {
-        FromPrimitive::from_i8((self as i8 + 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
-            .expect("Will always be a valid i8 unless TransactionType became an empty enum")
+        FromPrimitive::from_isize(
+            (self as isize + 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
+        )
+        .expect("Will always be a valid i8 unless TransactionType became an empty enum")
     }
 
     pub fn prev(self) -> Self {
-        FromPrimitive::from_i8((self as i8 - 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
-            .expect("Will always be a valid i8 unless TransactionType became an empty enum")
+        FromPrimitive::from_isize(
+            (self as isize - 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
+        )
+        .expect("Will always be a valid i8 unless TransactionType became an empty enum")
     }
 }
 
@@ -250,7 +254,7 @@ impl TryFrom<i32> for TransactionType {
     type Error = MissingType;
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
-        FromPrimitive::from_u8(value as u8).ok_or(MissingType)
+        FromPrimitive::from_i32(value).ok_or(MissingType)
     }
 }
 

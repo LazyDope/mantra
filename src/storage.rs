@@ -4,8 +4,10 @@ use std::{
 };
 
 use async_std::stream::StreamExt;
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 use sqlx::{migrate::MigrateDatabase, Row, Sqlite, SqlitePool};
-use strum::{Display, VariantNames};
+use strum::{Display, EnumCount, VariantNames};
 use thiserror::Error;
 use time::PrimitiveDateTime;
 
@@ -32,12 +34,12 @@ pub struct Transaction {
 pub struct MissingType;
 
 /// The type of a transaction, used for filtering
-#[derive(Default, VariantNames, Clone, Copy, Display)]
+#[derive(Default, VariantNames, EnumCount, Clone, Copy, Display, FromPrimitive)]
 pub enum TransactionType {
     #[default]
     Other = 0,
-    Character = 1,
-    MissionReward = 2,
+    Character,
+    MissionReward,
 }
 
 #[derive(Error, Debug)]
@@ -234,21 +236,13 @@ impl User {
 
 impl TransactionType {
     pub fn next(self) -> Self {
-        use TransactionType::*;
-        match self {
-            Other => Character,
-            Character => MissionReward,
-            MissionReward => Other,
-        }
+        FromPrimitive::from_i8((self as i8 + 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
+            .expect("Will always be a valid i8 unless TransactionType became an empty enum")
     }
 
     pub fn prev(self) -> Self {
-        use TransactionType::*;
-        match self {
-            Other => MissionReward,
-            Character => Other,
-            MissionReward => Character,
-        }
+        FromPrimitive::from_i8((self as i8 - 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
+            .expect("Will always be a valid i8 unless TransactionType became an empty enum")
     }
 }
 
@@ -256,11 +250,7 @@ impl TryFrom<i32> for TransactionType {
     type Error = MissingType;
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Other),
-            1 => Ok(Self::Character),
-            _ => Err(MissingType),
-        }
+        FromPrimitive::from_u8(value as u8).ok_or(MissingType)
     }
 }
 

@@ -10,6 +10,8 @@ anyhow = "1.0.82"
 async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
 crossterm = "0.28.1"
 deranged = { version = "0.3.11", features = ["serde"] }
+num-derive = "0.4.2"
+num-traits = "0.2.19"
 ratatui = "0.28.1"
 serde = { version = "1.0.209", features = ["derive"] }
 serde_yaml = "0.9.34"

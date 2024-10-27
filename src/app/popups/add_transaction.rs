@@ -218,6 +218,7 @@ impl AddTransaction {
 }
 
 impl AddTransactionField {
+    /// Switch the selected field to the next one
     fn next(&mut self) {
         *self = FromPrimitive::from_isize(
             (*self as isize + 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
@@ -225,6 +226,7 @@ impl AddTransactionField {
         .expect("Will always be a valid isize unless AddTransactionField became an empty enum")
     }
 
+    /// Switch the selected field to the previous one
     fn prev(&mut self) {
         *self = FromPrimitive::from_isize(
             (*self as isize - 1).rem_euclid(<Self as EnumCount>::COUNT as isize),

@@ -1,4 +1,4 @@
-use mantra::app::App;
+use mantra_lancer::app::App;
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {

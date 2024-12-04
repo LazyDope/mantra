@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::{
     config::{Config, ConfigError},
-    storage::{Storage, StorageLoadError, StorageRunError, Transaction, User},
+    storage::{Storage, StorageLoadError, StorageRunError, Transaction, TransactionFilter, User},
     CursoredString,
 };
 
@@ -113,7 +113,9 @@ impl App {
         Ok(App {
             data: AppData {
                 config: config.await?,
-                transactions: storage.get_transactions(user.get_id(), ..).await?,
+                transactions: storage
+                    .get_transactions(TransactionFilter::UserId(user.get_id()))
+                    .await?,
                 storage,
                 current_user: Some(user),
                 table_state: TableState::default(),
@@ -203,7 +205,9 @@ impl AppData {
     pub async fn update_table(&mut self) -> Result<(), AppError> {
         self.transactions = self
             .storage
-            .get_transactions(self.current_user.as_ref().map(|v| v.get_id()).unwrap(), ..)
+            .get_transactions(TransactionFilter::UserId(
+                self.current_user.as_ref().map(|v| v.get_id()).unwrap(),
+            ))
             .await?;
         Ok(())
     }
@@ -343,7 +347,7 @@ impl AppData {
                 if let Some(index) = self.table_state.selected() {
                     let transaction = &self.transactions[index];
                     self.storage
-                        .remove_transactions(&format!("id = {}", transaction.trans_id))
+                        .remove_transactions(TransactionFilter::Id(transaction.trans_id))
                         .await?;
                     self.status_text =
                         format!("Deleted \"{} | {}\"", transaction.value, transaction.msg);

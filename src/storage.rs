@@ -6,10 +6,8 @@ use std::{
 };
 
 use async_std::stream::StreamExt;
-use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
-use sqlx::{migrate::MigrateDatabase, Row, Sqlite, SqlitePool};
-use strum::{Display, EnumCount, VariantNames};
+use sqlx::{migrate::MigrateDatabase, QueryBuilder, Row, Sqlite, SqlitePool, Type};
+use strum::{Display, EnumCount, FromRepr, VariantNames};
 use thiserror::Error;
 use time::PrimitiveDateTime;
 
@@ -34,12 +32,30 @@ pub struct Transaction {
     pub msg: String,
 }
 
-/// Unit error that may occur when converting type id to the enum variant
+/// Types of Filters usable for queries
+pub enum TransactionFilter {
+    UserId(i32),
+    Type(TransactionType),
+    DateRange(DateRange),
+    Id(i32),
+    And(Vec<TransactionFilter>),
+    Or(Vec<TransactionFilter>),
+    Not(Box<TransactionFilter>),
+}
+
+/// Allows storing a range because RangeBound is not dyn compatible
+pub struct DateRange {
+    start: Bound<time::PrimitiveDateTime>,
+    end: Bound<time::PrimitiveDateTime>,
+}
+
+/// Error that may occur when converting type id to the enum variant
 #[derive(Error)]
 pub struct MissingVariant<T, U>(T, PhantomData<U>);
 
 /// The type of a transaction, used for filtering
-#[derive(Default, VariantNames, EnumCount, Clone, Copy, Display, FromPrimitive)]
+#[derive(Default, VariantNames, EnumCount, Clone, Copy, Display, FromRepr, Type)]
+#[repr(i32)]
 pub enum TransactionType {
     #[default]
     Other = 0,
@@ -131,82 +147,42 @@ impl Storage {
 
     /// Removes all transactions that match a filter.
     /// Do not pass user input directly into this function.
-    pub async fn remove_transactions(&self, filter: &str) -> Result<(), StorageRunError> {
-        sqlx::query(&format!("DELETE FROM transactions WHERE {filter}"))
-            .execute(&self.db)
-            .await?;
+    pub async fn remove_transactions(
+        &self,
+        filter: TransactionFilter,
+    ) -> Result<(), StorageRunError> {
+        let mut query_builder = QueryBuilder::new("DELETE FROM transactions WHERE ");
+        filter.add_to_builder(&mut query_builder);
+
+        let query = query_builder.build();
+
+        query.execute(&self.db).await?;
         Ok(())
     }
 
     /// Get all transactions for a user within a date range
-    pub async fn get_transactions<DT>(
+    pub async fn get_transactions(
         &self,
-        user: i32,
-        when: DT,
-    ) -> Result<Vec<Transaction>, StorageRunError>
-    where
-        DT: RangeBounds<time::PrimitiveDateTime>,
-    {
-        let mut query_statement = String::from(
-            "SELECT id, datetime, user_id, value, type, message FROM transactions WHERE user_id=$1",
+        filter: TransactionFilter,
+    ) -> Result<Vec<Transaction>, StorageRunError> {
+        let mut query_builder = QueryBuilder::new(
+            "SELECT id, datetime, user_id, value, type, message FROM transactions WHERE ",
         );
-        let mut count = 1;
-        match when.start_bound() {
-            Bound::Included(_) => {
-                count += 1;
-                query_statement.push_str(&format!(" AND datetime >= ${count}"))
-            }
-            Bound::Excluded(_) => {
-                count += 1;
-                query_statement.push_str(&format!(" AND datetime > ${count}"))
-            }
-            Bound::Unbounded => {}
-        }
 
-        match when.end_bound() {
-            Bound::Included(_) => {
-                count += 1;
-                query_statement.push_str(&format!(" AND datetime <= ${count}"))
-            }
-            Bound::Excluded(_) => {
-                count += 1;
-                query_statement.push_str(&format!(" AND datetime < ${count}"))
-            }
-            Bound::Unbounded => {}
-        }
+        filter.add_to_builder(&mut query_builder);
 
-        let query = sqlx::query(&query_statement).bind(user);
-
-        let query = match when.start_bound() {
-            Bound::Included(start) => query.bind(start),
-            Bound::Excluded(start) => query.bind(start),
-            Bound::Unbounded => query,
-        };
-
-        let query = match when.end_bound() {
-            Bound::Included(end) => query.bind(end),
-            Bound::Excluded(end) => query.bind(end),
-            Bound::Unbounded => query,
-        };
+        let query = query_builder.build();
 
         Ok(query
             .fetch(&self.db)
             .filter_map(|row| {
-                row.ok().and_then(|row| {
-                    let trans_id = row.get("id");
-                    let datetime = row.get("datetime");
-                    let user_id = row.get("user_id");
-                    let value = row.get("value");
-                    let transaction_type = row.get::<i32, _>("type").try_into().ok()?;
-                    let msg = row.get("message");
-                    Some(Transaction {
-                        trans_id,
-                        datetime,
-                        user_id,
-                        value,
-                        transaction_type,
-                        msg,
-                    })
+                row.ok().map(|row| Transaction {
+                    trans_id: row.get("id"),
+                    datetime: row.get("datetime"),
+                    user_id: row.get("user_id"),
+                    value: row.get("value"),
+                    transaction_type: row.get("type"),
+                    msg: row.get("message"),
                 })
             })
             .collect()
@@ -256,18 +232,87 @@ impl User {
 impl TransactionType {
     /// Returns the next type of transaction from the enum
     pub fn next(self) -> Self {
-        FromPrimitive::from_isize(
-            (self as isize + 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
-        )
-        .expect("Will always be a valid i8 unless TransactionType became an empty enum")
+        Self::from_repr((self as i32 + 1).rem_euclid(<Self as EnumCount>::COUNT as i32))
+            .expect("TransactionType is non-zero count so will always succeed")
     }
 
     /// Returns the previous type of transaction from the enum
     pub fn prev(self) -> Self {
-        FromPrimitive::from_isize(
-            (self as isize - 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
-        )
-        .expect("Will always be a valid i8 unless TransactionType became an empty enum")
+        Self::from_repr((self as i32 - 1).rem_euclid(<Self as EnumCount>::COUNT as i32))
+            .expect("TransactionType is non-zero count so will always succeed")
+    }
+}
+
+impl TransactionFilter {
+    pub fn add_to_builder<'s, 'args>(&'s self, builder: &mut QueryBuilder<'args, Sqlite>)
+    where
+        's: 'args,
+    {
+        match self {
+            TransactionFilter::UserId(id) => {
+                builder.push("user_id = ").push_bind(id);
+            }
+            TransactionFilter::Type(transaction_type) => {
+                builder.push("type = ").push_bind(transaction_type);
+            }
+            TransactionFilter::DateRange(date_range) => {
+                let mut separated = builder.separated(" AND ");
+                match date_range.start {
+                    Bound::Included(start) => {
+                        separated.push("datetime >= ").push_bind_unseparated(start);
+                    }
+                    Bound::Excluded(start) => {
+                        separated.push("datetime > ").push_bind_unseparated(start);
+                    }
+                    Bound::Unbounded => {}
+                }
+                match date_range.end {
+                    Bound::Included(end) => {
+                        separated.push("datetime <= ").push_bind_unseparated(end);
+                    }
+                    Bound::Excluded(end) => {
+                        separated.push("datetime < ").push_bind_unseparated(end);
+                    }
+                    Bound::Unbounded => {
+                        separated.push("1=1");
+                    }
+                }
+            }
+            TransactionFilter::And(filters) => {
+                let mut push_sep = false;
+                builder.push("(");
+                for filter in filters {
+                    if push_sep {
+                        builder.push(") AND (");
+                    } else {
+                        push_sep = true;
+                    }
+                    filter.add_to_builder(builder);
+                }
+                builder.push(")");
+            }
+            TransactionFilter::Or(filters) => {
+                let mut push_sep = false;
+                builder.push("(");
+                for filter in filters {
+                    if push_sep {
+                        builder.push(") OR (");
+                    } else {
+                        push_sep = true
+                    }
+                    filter.add_to_builder(builder);
+                }
+                builder.push(")");
+            }
+            TransactionFilter::Not(filter) => {
+                builder.push("NOT (");
+                filter.add_to_builder(builder);
+                builder.push(")");
+            }
+            TransactionFilter::Id(id) => {
+                builder.push("id = ").push_bind(id);
+            }
+        };
     }
 }
 
@@ -275,7 +320,13 @@ impl TryFrom<i32> for TransactionType {
     type Error = MissingVariant<i32, Self>;
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
-        FromPrimitive::from_i32(value).ok_or(MissingVariant(value, PhantomData))
+        Self::from_repr(value).ok_or(MissingVariant(value, PhantomData))
+    }
+}
+
+impl From<TransactionType> for i32 {
+    fn from(value: TransactionType) -> Self {
+        value as i32
     }
 }
 
@@ -296,5 +347,17 @@ where
             self.0,
             std::any::type_name::<U>()
         )
+    }
+}
+
+impl<T> From<T> for DateRange
+where
+    T: RangeBounds<time::PrimitiveDateTime>,
+{
+    fn from(value: T) -> Self {
+        Self {
+            start: value.start_bound().cloned(),
+            end: value.end_bound().cloned(),
+        }
     }
 }

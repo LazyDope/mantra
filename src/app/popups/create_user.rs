@@ -31,7 +31,7 @@ impl CreateUser {
     pub(crate) async fn process_event(
         mut self,
         app: &mut App,
-        event: Event,
+        event: &Event,
     ) -> Result<Option<Popup>, AppError> {
         if let Event::Key(key) = event {
             if key.kind == event::KeyEventKind::Press {

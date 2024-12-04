@@ -20,7 +20,7 @@ impl Popup {
     pub async fn process_event(
         self,
         app: &mut App,
-        event: Event,
+        event: &Event,
     ) -> Result<Option<Self>, AppError> {
         match self {
             Popup::AddTransaction(popup) => popup.process_event(app, event).await,

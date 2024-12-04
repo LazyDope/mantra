@@ -2,13 +2,11 @@ use mantra_lancer::app::App;
 
 #[async_std::main]
 async fn main() -> anyhow::Result<()> {
-    let mut terminal = ratatui::init();
+    let terminal = ratatui::init();
 
-    let mut app = App::init().await?;
-    while app.run().await? {
-        terminal.draw(|frame| app.ui(frame))?;
-    }
+    let app = App::init().await?;
+    let app_result = app.run(terminal).await;
 
     ratatui::restore();
-    Ok(())
+    Ok(app_result?)
 }

@@ -1,9 +1,14 @@
 //! This module provides the front end application through the [`App`] type
-use crossterm::event::{self, Event, KeyCode, KeyEvent};
+use std::time::Duration;
+
+use async_std::stream::{self, StreamExt};
+use crossterm::event::{self, Event, EventStream, KeyCode, KeyEvent};
+use futures::future::FutureExt;
 use layout::Flex;
 use ratatui::{
     prelude::*,
     widgets::{Block, BorderType, Paragraph, Row, Table, TableState},
+    DefaultTerminal,
 };
 use thiserror::Error;
 
@@ -83,6 +88,8 @@ pub enum AppMode {
 }
 
 impl App {
+    const DURATION_PER_FRAME: Duration = Duration::from_millis(1000 / 60);
+
     /// Initialize a new App, starting with the intro animation then into a login screen
     pub async fn init() -> Result<Self, AppInitError> {
         let config = Config::load_or_create();
@@ -129,7 +136,7 @@ impl App {
     }
 
     /// UI for the app, separating based on mode and displaying any popups on top of the current window
-    pub fn ui(&mut self, frame: &mut Frame<'_>) {
+    fn ui(&mut self, frame: &mut Frame<'_>) {
         match &mut self.mode {
             AppMode::Intro { animation_progress } => {
                 self.data.play_intro(frame, animation_progress)
@@ -156,47 +163,59 @@ impl App {
     ///     let mut terminal = ratatui::init();
     ///
     ///     let mut app = App::init().await?;
-    ///     while app.run().await? {
-    ///         terminal.draw(|frame| app.ui(frame))?;
-    ///     }
+    ///     let app_result = app.run(terminal).await;
     ///
     ///     ratatui::restore();
-    ///     Ok(())
+    ///     Ok(app_result?)
     /// }
-    ///```
-    pub async fn run(&mut self) -> Result<bool, AppError> {
-        // poll events every 50 milliseconds
-        if event::poll(std::time::Duration::from_millis(50))? {
-            // popups grab all key events
-            if let Some(popup) = self.data.popup.take() {
-                self.data.popup = popup.process_event(self, event::read()?).await?;
-            } else if let Event::Key(key) = event::read()? {
-                if key.kind == event::KeyEventKind::Press {
-                    // modes switch between one another by returning Some(AppMode)
-                    // otherwise the current mode is maintained
-                    let new_state: Option<AppMode> = match &mut self.mode {
-                        AppMode::Intro { .. } => {
-                            if self.data.current_user.is_some() {
-                                Some(AppMode::LogTable)
-                            } else {
-                                Some(AppMode::UserLogin(Default::default()))
-                            }
+    /// ```
+    pub async fn run(mut self, mut terminal: DefaultTerminal) -> Result<(), AppError> {
+        let mut events = EventStream::new();
+        let mut interval = stream::interval(Self::DURATION_PER_FRAME);
+
+        while !matches!(self.mode, AppMode::Quitting) {
+            futures::select_biased! {
+                _ = interval.next().fuse() => {terminal.draw(|frame| self.ui(frame))?;},
+                maybe_event = events.next().fuse() => {
+                    match maybe_event {
+                        Some(Ok(event)) => {
+                            self.handle_event(&event).await?;
                         }
-                        AppMode::UserLogin(username) => {
-                            self.data.run_user_login(username, key).await?
-                        }
-                        AppMode::LogTable => self.data.run_table(key).await?,
-                        AppMode::Quitting => None,
-                    };
-                    match new_state {
-                        Some(AppMode::Quitting) => return Ok(false),
-                        Some(mode) => self.mode = mode,
-                        None => (),
+                        Some(Err(e)) => return Err(e)?,
+                        None => break,
                     }
+                },
+            };
+        }
+        Ok(())
+    }
+
+    async fn handle_event(&mut self, event: &Event) -> Result<(), AppError> {
+        // popups grab all key events
+        if let Some(popup) = self.data.popup.take() {
+            self.data.popup = popup.process_event(self, event).await?;
+        } else if let Event::Key(key) = event::read()? {
+            if key.kind == event::KeyEventKind::Press {
+                // modes switch between one another by returning Some(AppMode)
+                // otherwise the current mode is maintained
+                let new_state: Option<AppMode> = match &mut self.mode {
+                    AppMode::Intro { .. } => {
+                        if self.data.current_user.is_some() {
+                            Some(AppMode::LogTable)
+                        } else {
+                            Some(AppMode::UserLogin(Default::default()))
+                        }
+                    }
+                    AppMode::UserLogin(username) => self.data.run_user_login(username, key).await?,
+                    AppMode::LogTable => self.data.run_table(key).await?,
+                    AppMode::Quitting => None,
+                };
+                if let Some(mode) = new_state {
+                    self.mode = mode
                 }
             }
         }
-        Ok(true)
+        Ok(())
     }
 }
 

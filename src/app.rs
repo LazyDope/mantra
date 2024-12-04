@@ -19,7 +19,7 @@ use crate::{
 };
 
 pub mod popups;
-use popups::{AddTransaction, CreateUser, Popup};
+use popups::{AddTransaction, CreateUser, Popup, PopupHandler};
 
 const MANTRA_INTRO: &str = r"  __       __   ______   __    __        __  ________  _______    ______
  /  \     /  | /      \ /  \  /  |      /  |/        |/       \  /      \ 

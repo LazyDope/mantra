@@ -1,5 +1,6 @@
 //! Handler for popups
 use crossterm::event::Event;
+use enum_dispatch::enum_dispatch;
 use ratatui::prelude::*;
 
 use super::{App, AppError};
@@ -10,32 +11,19 @@ mod create_user;
 pub use create_user::*;
 
 /// Types of popup that can be displayed
+#[enum_dispatch(PopupHandler)]
 pub enum Popup {
-    AddTransaction(AddTransaction),
-    CreateUser(CreateUser),
+    AddTransaction,
+    CreateUser,
 }
 
-impl Popup {
-    /// Passes the event along to the individual popup type
-    pub async fn process_event(
-        self,
-        app: &mut App,
-        event: &Event,
-    ) -> Result<Option<Self>, AppError> {
-        match self {
-            Popup::AddTransaction(popup) => popup.process_event(app, event).await,
-            Popup::CreateUser(popup) => popup.process_event(app, event).await,
-        }
-    }
+#[enum_dispatch]
+pub(crate) trait PopupHandler {
+    /// Handles incoming key events and updates log table when submitted
+    async fn process_event(self, app: &mut App, event: &Event) -> Result<Option<Popup>, AppError>;
 
-    /// Passes the rendering along to the individual popup type
-    pub fn render_to_frame(&self, area: Rect, frame: &mut Frame)
+    /// Handles the rendering of the popup to the given [`Frame`]
+    fn render_to_frame<'a>(&self, area: Rect, frame: &mut Frame<'a>)
     where
-        Self: Sized,
-    {
-        match self {
-            Popup::AddTransaction(popup) => popup.render_to_frame(area, frame),
-            Popup::CreateUser(popup) => popup.render_to_frame(area, frame),
-        }
-    }
+        Self: Sized;
 }

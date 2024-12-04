@@ -13,6 +13,7 @@ anyhow = "1.0.82"
 async-std = { version = "1.12.0", features = ["attributes", "unstable"] }
 crossterm = { version = "0.28.1", features = ["event-stream"] }
 deranged = { version = "0.3.11", features = ["serde"] }
+enum_dispatch = "0.3.13"
 futures = "0.3.31"
 num-derive = "0.4.2"
 num-traits = "0.2.19"

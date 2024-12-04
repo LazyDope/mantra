@@ -15,7 +15,7 @@ use crate::{
     storage::TransactionType,
 };
 
-use super::Popup;
+use super::{Popup, PopupHandler};
 
 /// Handles the creation of new transactions
 #[derive(Default)]
@@ -36,9 +36,26 @@ pub enum AddTransactionField {
     Submit,
 }
 
-impl AddTransaction {
-    /// Handles incoming key events and updates log table when submitted
-    pub(crate) async fn process_event(
+impl AddTransactionField {
+    /// Switch the selected field to the next one
+    fn next(&mut self) {
+        *self = FromPrimitive::from_isize(
+            (*self as isize + 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
+        )
+        .expect("Will always be a valid isize unless AddTransactionField became an empty enum")
+    }
+
+    /// Switch the selected field to the previous one
+    fn prev(&mut self) {
+        *self = FromPrimitive::from_isize(
+            (*self as isize - 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
+        )
+        .expect("Will always be a valid isize unless AddTransactionField became an empty enum")
+    }
+}
+
+impl PopupHandler for AddTransaction {
+    async fn process_event(
         mut self,
         app: &mut App,
         event: &Event,
@@ -124,8 +141,7 @@ impl AddTransaction {
         Ok(Some(Popup::AddTransaction(self)))
     }
 
-    /// Handles the rendering of the popup to the given [`Frame`]
-    pub(super) fn render_to_frame(&self, area: ratatui::prelude::Rect, frame: &mut Frame)
+    fn render_to_frame(&self, area: ratatui::prelude::Rect, frame: &mut Frame)
     where
         Self: Sized,
     {
@@ -214,23 +230,5 @@ impl AddTransaction {
             .flex(Flex::Center)
             .areas::<1>(submit_area)[0],
         )
-    }
-}
-
-impl AddTransactionField {
-    /// Switch the selected field to the next one
-    fn next(&mut self) {
-        *self = FromPrimitive::from_isize(
-            (*self as isize + 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
-        )
-        .expect("Will always be a valid isize unless AddTransactionField became an empty enum")
-    }
-
-    /// Switch the selected field to the previous one
-    fn prev(&mut self) {
-        *self = FromPrimitive::from_isize(
-            (*self as isize - 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
-        )
-        .expect("Will always be a valid isize unless AddTransactionField became an empty enum")
     }
 }

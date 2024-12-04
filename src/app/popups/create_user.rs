@@ -9,7 +9,7 @@ use ratatui::{
 
 use crate::app::{App, AppError, AppMode};
 
-use super::Popup;
+use super::{Popup, PopupHandler};
 
 /// Popup for confirming new user creation
 pub struct CreateUser {
@@ -26,9 +26,10 @@ impl CreateUser {
             should_create: true,
         }
     }
+}
 
-    /// Handle incoming key events
-    pub(crate) async fn process_event(
+impl PopupHandler for CreateUser {
+    async fn process_event(
         mut self,
         app: &mut App,
         event: &Event,
@@ -61,8 +62,7 @@ impl CreateUser {
         Ok(Some(Popup::CreateUser(self)))
     }
 
-    /// Display popup on top of existing [`Frame`]
-    pub(crate) fn render_to_frame(&self, area: Rect, frame: &mut Frame) {
+    fn render_to_frame(&self, area: Rect, frame: &mut Frame) {
         const QUESTION_HEIGHT: u16 = 1;
         const BORDER_SIZE: u16 = 1;
 

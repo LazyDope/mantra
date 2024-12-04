@@ -33,6 +33,7 @@ pub struct Transaction {
 }
 
 /// Types of Filters usable for queries
+#[derive(Clone)]
 pub enum TransactionFilter {
     UserId(i32),
     Type(TransactionType),
@@ -44,6 +45,7 @@ pub enum TransactionFilter {
 }
 
 /// Allows storing a range because RangeBound is not dyn compatible
+#[derive(Clone)]
 pub struct DateRange {
     start: Bound<time::PrimitiveDateTime>,
     end: Bound<time::PrimitiveDateTime>,

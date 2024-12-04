@@ -141,7 +141,7 @@ impl PopupHandler for AddTransaction {
         Ok(Some(Popup::AddTransaction(self)))
     }
 
-    fn render_to_frame(&self, area: ratatui::prelude::Rect, frame: &mut Frame)
+    fn render_to_frame(&mut self, area: ratatui::prelude::Rect, frame: &mut Frame)
     where
         Self: Sized,
     {

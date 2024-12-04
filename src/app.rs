@@ -45,6 +45,7 @@ pub struct AppData {
     storage: Storage,
     current_user: Option<User>,
     transactions: Vec<Transaction>,
+    transaction_filters: Vec<TransactionFilter>,
     table_state: TableState,
     status_text: String,
     popup: Option<Popup>,
@@ -98,6 +99,7 @@ impl App {
             data: AppData {
                 config: config.await?,
                 transactions: vec![],
+                transaction_filters: vec![],
                 storage,
                 current_user: None,
                 table_state: TableState::default(),
@@ -123,6 +125,7 @@ impl App {
                 transactions: storage
                     .get_transactions(TransactionFilter::UserId(user.get_id()))
                     .await?,
+                transaction_filters: vec![],
                 storage,
                 current_user: Some(user),
                 table_state: TableState::default(),
@@ -146,7 +149,7 @@ impl App {
             AppMode::Quitting => (),
         }
 
-        if let Some(popup) = &self.data.popup {
+        if let Some(popup) = &mut self.data.popup {
             popup.render_to_frame(frame.area(), frame);
         }
     }
@@ -223,11 +226,15 @@ impl App {
 impl AppData {
     /// Updates the table from the DB, done after making any changes
     pub async fn update_table(&mut self) -> Result<(), AppError> {
+        let mut filters = Vec::with_capacity(self.transaction_filters.len() + 1);
+        filters.push(TransactionFilter::UserId(
+            self.current_user.as_ref().map(|v| v.get_id()).unwrap(),
+        ));
+        // TODO: This is not ideal, maybe we could have separate OwnedFilters and RefFilters types
+        filters.extend(self.transaction_filters.iter().map(|v| v.clone()));
         self.transactions = self
             .storage
-            .get_transactions(TransactionFilter::UserId(
-                self.current_user.as_ref().map(|v| v.get_id()).unwrap(),
-            ))
+            .get_transactions(TransactionFilter::And(filters))
             .await?;
         Ok(())
     }
@@ -365,6 +372,7 @@ impl AppData {
             }
             KeyCode::Char('d') => {
                 if let Some(index) = self.table_state.selected() {
+                    let index = index.clamp(0, self.transactions.len() - 1);
                     let transaction = &self.transactions[index];
                     self.storage
                         .remove_transactions(TransactionFilter::Id(transaction.trans_id))

@@ -62,7 +62,7 @@ impl PopupHandler for CreateUser {
         Ok(Some(Popup::CreateUser(self)))
     }
 
-    fn render_to_frame(&self, area: Rect, frame: &mut Frame) {
+    fn render_to_frame(&mut self, area: Rect, frame: &mut Frame) {
         const QUESTION_HEIGHT: u16 = 1;
         const BORDER_SIZE: u16 = 1;
 

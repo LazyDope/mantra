@@ -151,9 +151,8 @@ impl App {
         }
     }
 
-    /// Run the input handling of the app, polling and passing along key events to mode specific functions
-    /// App is meant to continue running as long as this returns true, gracefully quitting when
-    /// it returns false, or short circuiting any errors
+    /// Run the  app, polling and passing along key events to the event handler while
+    /// running the frame drawing asynchronously
     ///
     /// ```rust,no_run
     /// use mantra::app::App;

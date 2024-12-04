@@ -193,7 +193,7 @@ impl App {
         // popups grab all key events
         if let Some(popup) = self.data.popup.take() {
             self.data.popup = popup.process_event(self, event).await?;
-        } else if let Event::Key(key) = event::read()? {
+        } else if let Event::Key(key) = event {
             if key.kind == event::KeyEventKind::Press {
                 // modes switch between one another by returning Some(AppMode)
                 // otherwise the current mode is maintained
@@ -205,8 +205,10 @@ impl App {
                             Some(AppMode::UserLogin(Default::default()))
                         }
                     }
-                    AppMode::UserLogin(username) => self.data.run_user_login(username, key).await?,
-                    AppMode::LogTable => self.data.run_table(key).await?,
+                    AppMode::UserLogin(username) => {
+                        self.data.run_user_login(username, *key).await?
+                    }
+                    AppMode::LogTable => self.data.run_table(*key).await?,
                     AppMode::Quitting => None,
                 };
                 if let Some(mode) = new_state {

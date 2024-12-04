@@ -23,7 +23,7 @@ pub(crate) trait PopupHandler {
     async fn process_event(self, app: &mut App, event: &Event) -> Result<Option<Popup>, AppError>;
 
     /// Handles the rendering of the popup to the given [`Frame`]
-    fn render_to_frame<'a>(&self, area: Rect, frame: &mut Frame<'a>)
+    fn render_to_frame(&self, area: Rect, frame: &mut Frame)
     where
         Self: Sized;
 }

@@ -51,9 +51,6 @@ pub struct AppData {
     popup: Option<Popup>,
 }
 
-/// NewType of [`CursoredString`] for the purposes of displaying new user pane
-pub type Username = CursoredString;
-
 /// Error that occurred at App initialization
 #[derive(Error, Debug)]
 pub enum AppInitError {
@@ -80,8 +77,8 @@ pub enum AppError {
 pub enum AppMode {
     /// Intro animation sequence, internal field for animation progress
     Intro { animation_progress: usize },
-    /// User login prompt, internal field for Username currently being typed
-    UserLogin(Username),
+    /// User login prompt, internal field for username currently being typed
+    UserLogin(CursoredString),
     /// Table with log entires for the current user
     LogTable,
     /// App is in the process of closing
@@ -145,7 +142,9 @@ impl App {
                 self.data.play_intro(frame, animation_progress)
             }
             AppMode::LogTable => self.data.display_log(frame),
-            AppMode::UserLogin(username) => username.user_login(frame, self.data.popup.is_some()),
+            AppMode::UserLogin(username) => {
+                AppData::user_login(&username, frame, self.data.popup.is_some())
+            }
             AppMode::Quitting => (),
         }
 
@@ -317,7 +316,7 @@ impl AppData {
     /// If the username provided doesn't match to a user already in the db then this opens a new user popup
     pub async fn run_user_login(
         &mut self,
-        username: &mut Username,
+        username: &mut CursoredString,
         key: KeyEvent,
     ) -> Result<Option<AppMode>, AppError> {
         match key.code {
@@ -386,11 +385,8 @@ impl AppData {
         }
         Ok(None)
     }
-}
 
-impl Username {
-    /// Displays the user login prompt to the given [`Frame`]
-    pub fn user_login(&self, frame: &mut Frame, hide_cursor: bool) {
+    pub fn user_login(username: &CursoredString, frame: &mut Frame, hide_cursor: bool) {
         const USERNAME_HEIGHT: u16 = 1;
         const BORDER_SIZE: u16 = 1;
 
@@ -410,10 +406,10 @@ impl Username {
             .title("Username")
             .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
 
-        let username_text = Paragraph::new(self.as_str()).block(username_field);
+        let username_text = Paragraph::new(username.as_str()).block(username_field);
         if !hide_cursor {
             frame.set_cursor_position(Position::new(
-                username_area.x + self.index as u16 + 1,
+                username_area.x + username.index as u16 + 1,
                 username_area.y + 1,
             ));
         }

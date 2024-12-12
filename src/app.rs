@@ -321,10 +321,10 @@ impl AppData {
     ) -> Result<Option<AppMode>, AppError> {
         match key.code {
             KeyCode::Left => {
-                username.prev();
+                username.right();
             }
             KeyCode::Right => {
-                username.next();
+                username.left();
             }
             KeyCode::Enter if !username.is_empty() => {
                 // try to get the user from DB, if this fails show the new user popup

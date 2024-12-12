@@ -73,7 +73,7 @@ impl PopupHandler for AddTransaction {
                         AddTransactionField::Amount => {
                             self.amount -= crate::value_from_modifiers(key.modifiers);
                         }
-                        AddTransactionField::Message => self.msg.prev(),
+                        AddTransactionField::Message => self.msg.right(),
                         AddTransactionField::TransactionType => {
                             self.trans_type = self.trans_type.prev()
                         }
@@ -83,7 +83,7 @@ impl PopupHandler for AddTransaction {
                         AddTransactionField::Amount => {
                             self.amount += crate::value_from_modifiers(key.modifiers);
                         }
-                        AddTransactionField::Message => self.msg.next(),
+                        AddTransactionField::Message => self.msg.left(),
                         AddTransactionField::TransactionType => {
                             self.trans_type = self.trans_type.next()
                         }

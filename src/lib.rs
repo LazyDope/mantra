@@ -11,7 +11,7 @@ pub mod config;
 pub mod storage;
 
 /// Grabs the XDG dirs
-pub fn base_dirs() -> Result<BaseDirectories, xdg::BaseDirectoriesError> {
+fn base_dirs() -> Result<BaseDirectories, xdg::BaseDirectoriesError> {
     BaseDirectories::with_prefix("mantra")
 }
 
@@ -57,12 +57,12 @@ impl CursoredString {
     }
 
     /// Move the cursor to the right
-    pub fn next(&mut self) {
+    pub fn left(&mut self) {
         self.index = self.index.saturating_add(1).clamp(0, self.buf.len())
     }
 
     /// Move the cursor to the left
-    pub fn prev(&mut self) {
+    pub fn right(&mut self) {
         self.index = self.index.saturating_sub(1).clamp(0, self.buf.len())
     }
 

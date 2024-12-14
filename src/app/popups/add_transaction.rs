@@ -3,7 +3,7 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 use ratatui::{
     layout::Flex,
-    prelude::*,
+    prelude::{Rect, *},
     widgets::{Block, Clear, Paragraph, Tabs, Wrap},
 };
 use strum::{EnumCount, VariantNames};
@@ -55,7 +55,7 @@ impl AddTransactionField {
 }
 
 impl PopupHandler for AddTransaction {
-    async fn process_event(
+    async fn handle_event(
         mut self,
         app: &mut App,
         event: &Event,
@@ -141,7 +141,7 @@ impl PopupHandler for AddTransaction {
         Ok(Some(Popup::AddTransaction(self)))
     }
 
-    fn render_to_frame(&mut self, area: ratatui::prelude::Rect, frame: &mut Frame)
+    fn render_to_frame(&mut self, area: Rect, frame: &mut Frame)
     where
         Self: Sized,
     {

@@ -29,7 +29,7 @@ impl CreateUser {
 }
 
 impl PopupHandler for CreateUser {
-    async fn process_event(
+    async fn handle_event(
         mut self,
         app: &mut App,
         event: &Event,

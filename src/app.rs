@@ -19,7 +19,7 @@ use crate::{
 };
 
 pub mod popups;
-use popups::{AddTransaction, CreateUser, Popup, PopupHandler};
+use popups::{AddTransaction, CreateUser, FilterResults, Popup, PopupHandler};
 
 const MANTRA_INTRO: &str = r"  __       __   ______   __    __        __  ________  _______    ______
  /  \     /  | /      \ /  \  /  |      /  |/        |/       \  /      \ 
@@ -143,7 +143,7 @@ impl App {
             }
             AppMode::LogTable => self.data.display_log(frame),
             AppMode::UserLogin(username) => {
-                AppData::user_login(&username, frame, self.data.popup.is_some())
+                AppData::user_login(username, frame, self.data.popup.is_some())
             }
             AppMode::Quitting => (),
         }
@@ -194,7 +194,7 @@ impl App {
     async fn handle_event(&mut self, event: &Event) -> Result<(), AppError> {
         // popups grab all key events
         if let Some(popup) = self.data.popup.take() {
-            self.data.popup = popup.process_event(self, event).await?;
+            self.data.popup = popup.handle_event(self, event).await?;
         } else if let Event::Key(key) = event {
             if key.kind == event::KeyEventKind::Press {
                 // modes switch between one another by returning Some(AppMode)
@@ -230,7 +230,7 @@ impl AppData {
             self.current_user.as_ref().map(|v| v.get_id()).unwrap(),
         ));
         // TODO: This is not ideal, maybe we could have separate OwnedFilters and RefFilters types
-        filters.extend(self.transaction_filters.iter().map(|v| v.clone()));
+        filters.extend(self.transaction_filters.iter().cloned());
         self.transactions = self
             .storage
             .get_transactions(TransactionFilter::And(filters))
@@ -380,6 +380,11 @@ impl AppData {
                         format!("Deleted \"{} | {}\"", transaction.value, transaction.msg);
                     self.update_table().await?
                 }
+            }
+            KeyCode::Char('f') => {
+                self.popup = Some(Popup::FilterResults(FilterResults::new(std::mem::take(
+                    &mut self.transaction_filters,
+                ))))
             }
             _ => (),
         }

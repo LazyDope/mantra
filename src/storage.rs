@@ -1,15 +1,14 @@
 //! This module interfaces with the local sqlite database
-use std::{
-    fmt::Display,
-    marker::PhantomData,
-    ops::{Bound, RangeBounds},
-};
+use std::{fmt::Display, marker::PhantomData};
 
 use async_std::stream::StreamExt;
 use sqlx::{migrate::MigrateDatabase, QueryBuilder, Row, Sqlite, SqlitePool, Type};
 use strum::{Display, EnumCount, FromRepr, VariantNames};
 use thiserror::Error;
 use time::PrimitiveDateTime;
+
+mod filter;
+pub use filter::*;
 
 /// Wrapper for the sqlite database
 pub struct Storage {
@@ -30,25 +29,6 @@ pub struct Transaction {
     pub value: i32,
     pub transaction_type: TransactionType,
     pub msg: String,
-}
-
-/// Types of Filters usable for queries
-#[derive(Clone)]
-pub enum TransactionFilter {
-    UserId(i32),
-    Type(TransactionType),
-    DateRange(DateRange),
-    Id(i32),
-    And(Vec<TransactionFilter>),
-    Or(Vec<TransactionFilter>),
-    Not(Box<TransactionFilter>),
-}
-
-/// Allows storing a range because RangeBound is not dyn compatible
-#[derive(Clone)]
-pub struct DateRange {
-    start: Bound<time::PrimitiveDateTime>,
-    end: Bound<time::PrimitiveDateTime>,
 }
 
 /// Error that may occur when converting type id to the enum variant
@@ -245,79 +225,6 @@ impl TransactionType {
     }
 }
 
-impl TransactionFilter {
-    pub fn add_to_builder<'s, 'args>(&'s self, builder: &mut QueryBuilder<'args, Sqlite>)
-    where
-        's: 'args,
-    {
-        match self {
-            TransactionFilter::UserId(id) => {
-                builder.push("user_id = ").push_bind(id);
-            }
-            TransactionFilter::Type(transaction_type) => {
-                builder.push("type = ").push_bind(transaction_type);
-            }
-            TransactionFilter::DateRange(date_range) => {
-                let mut separated = builder.separated(" AND ");
-                match date_range.start {
-                    Bound::Included(start) => {
-                        separated.push("datetime >= ").push_bind_unseparated(start);
-                    }
-                    Bound::Excluded(start) => {
-                        separated.push("datetime > ").push_bind_unseparated(start);
-                    }
-                    Bound::Unbounded => {}
-                }
-                match date_range.end {
-                    Bound::Included(end) => {
-                        separated.push("datetime <= ").push_bind_unseparated(end);
-                    }
-                    Bound::Excluded(end) => {
-                        separated.push("datetime < ").push_bind_unseparated(end);
-                    }
-                    Bound::Unbounded => {
-                        separated.push("1=1");
-                    }
-                }
-            }
-            TransactionFilter::And(filters) => {
-                let mut push_sep = false;
-                builder.push("(");
-                for filter in filters {
-                    if push_sep {
-                        builder.push(") AND (");
-                    } else {
-                        push_sep = true;
-                    }
-                    filter.add_to_builder(builder);
-                }
-                builder.push(")");
-            }
-            TransactionFilter::Or(filters) => {
-                let mut push_sep = false;
-                builder.push("(");
-                for filter in filters {
-                    if push_sep {
-                        builder.push(") OR (");
-                    } else {
-                        push_sep = true
-                    }
-                    filter.add_to_builder(builder);
-                }
-                builder.push(")");
-            }
-            TransactionFilter::Not(filter) => {
-                builder.push("NOT (");
-                filter.add_to_builder(builder);
-                builder.push(")");
-            }
-            TransactionFilter::Id(id) => {
-                builder.push("id = ").push_bind(id);
-            }
-        };
-    }
-}
-
 impl TryFrom<i32> for TransactionType {
     type Error = MissingVariant<i32, Self>;
 
@@ -349,17 +256,5 @@ where
             self.0,
             std::any::type_name::<U>()
         )
-    }
-}
-
-impl<T> From<T> for DateRange
-where
-    T: RangeBounds<time::PrimitiveDateTime>,
-{
-    fn from(value: T) -> Self {
-        Self {
-            start: value.start_bound().cloned(),
-            end: value.end_bound().cloned(),
-        }
     }
 }

@@ -23,7 +23,7 @@ pub enum Popup {
 #[enum_dispatch]
 pub(crate) trait PopupHandler {
     /// Handles incoming key events and updates log table when submitted
-    async fn process_event(self, app: &mut App, event: &Event) -> Result<Option<Popup>, AppError>;
+    async fn handle_event(self, app: &mut App, event: &Event) -> Result<Option<Popup>, AppError>;
 
     /// Handles the rendering of the popup to the given [`Frame`]
     fn render_to_frame(&mut self, area: Rect, frame: &mut Frame)

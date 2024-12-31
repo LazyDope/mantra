@@ -10,12 +10,10 @@ use super::TransactionType;
 /// Types of Filters usable for queries
 #[derive(Clone)]
 pub enum TransactionFilter {
-    UserId(i32),
-    Type(TransactionType),
+    UserId(Vec<i32>),
+    Type(Vec<TransactionType>),
     DateRange(DateRange),
-    Id(i32),
-    And(Vec<TransactionFilter>),
-    Or(Vec<TransactionFilter>),
+    Id(Vec<i32>),
     Not(Box<TransactionFilter>),
 }
 
@@ -27,16 +25,19 @@ pub struct DateRange {
 }
 
 impl TransactionFilter {
-    pub fn add_to_builder<'s, 'args>(&'s self, builder: &mut QueryBuilder<'args, Sqlite>)
-    where
-        's: 'args,
-    {
+    pub fn add_to_builder(&self, builder: &mut QueryBuilder<'_, Sqlite>) {
         match self {
-            TransactionFilter::UserId(id) => {
-                builder.push("user_id = ").push_bind(id);
+            TransactionFilter::UserId(ids) => {
+                builder.push("user_id = ").push_bind(ids[0]);
+                for id in &ids[1..] {
+                    builder.push(" OR user_id = ").push_bind(*id);
+                }
             }
-            TransactionFilter::Type(transaction_type) => {
-                builder.push("type = ").push_bind(transaction_type);
+            TransactionFilter::Type(transaction_types) => {
+                builder.push("type = ").push_bind(transaction_types[0]);
+                for transaction_type in &transaction_types[1..] {
+                    builder.push(" OR type = ").push_bind(*transaction_type);
+                }
             }
             TransactionFilter::DateRange(date_range) => {
                 let mut separated = builder.separated(" AND ");
@@ -61,39 +62,16 @@ impl TransactionFilter {
                     }
                 }
             }
-            TransactionFilter::And(filters) => {
-                let mut push_sep = false;
-                builder.push("(");
-                for filter in filters {
-                    if push_sep {
-                        builder.push(") AND (");
-                    } else {
-                        push_sep = true;
-                    }
-                    filter.add_to_builder(builder);
-                }
-                builder.push(")");
-            }
-            TransactionFilter::Or(filters) => {
-                let mut push_sep = false;
-                builder.push("(");
-                for filter in filters {
-                    if push_sep {
-                        builder.push(") OR (");
-                    } else {
-                        push_sep = true
-                    }
-                    filter.add_to_builder(builder);
-                }
-                builder.push(")");
-            }
             TransactionFilter::Not(filter) => {
                 builder.push("NOT (");
                 filter.add_to_builder(builder);
                 builder.push(")");
             }
-            TransactionFilter::Id(id) => {
-                builder.push("id = ").push_bind(id);
+            TransactionFilter::Id(ids) => {
+                builder.push("id = ").push_bind(ids[0]);
+                for id in &ids[1..] {
+                    builder.push(" OR id = ").push_bind(*id);
+                }
             }
         };
     }

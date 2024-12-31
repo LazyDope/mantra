@@ -1,11 +1,13 @@
 use core::iter::Iterator;
+use std::borrow::Cow;
 
 use crossterm::event::{self, Event, KeyCode};
+use itertools::Itertools;
 use ratatui::{
     layout::{Constraint, Flex, Layout, Margin},
     prelude::*,
     style::{Color, Style},
-    widgets::{Block, Cell, Clear, ListState, Paragraph, Row, Table},
+    widgets::{Block, Cell, Clear, ListState, Row, Table},
     Frame,
 };
 use text::ToText;
@@ -17,10 +19,22 @@ use crate::{
 
 use super::{Popup, PopupHandler};
 
-/// Popup for confirming new user creation
+/// Popup for viewing and editing filters
 pub struct FilterResults {
     filters: Vec<TransactionFilter>,
     list_state: ListState,
+}
+
+/// Popup that goes over the filter results for adding new filters
+pub struct AddFilter {
+    pop_under: FilterResults,
+    filter: TransactionFilter,
+    selected_section: FilterSection,
+}
+
+enum FilterSection {
+    Type,
+    Value,
 }
 
 impl FilterResults {
@@ -98,21 +112,30 @@ impl PopupHandler for FilterResults {
 
 fn filters_as_rows(filters: &[TransactionFilter]) -> impl Iterator<Item = Row> {
     filters.iter().map(|filter| match filter {
-        TransactionFilter::UserId(id) => {
-            Row::new([Cell::new("user id must be"), Cell::new(id.to_text())])
-        }
-        TransactionFilter::Type(transaction_type) => Row::new([
+        TransactionFilter::UserId(ids) => Row::new([
+            Cell::new("user id must be"),
+            Cell::new(Line::from_iter(Itertools::intersperse(
+                ids.iter().map(|v| Cow::from(v.to_string())),
+                Cow::from(" or "),
+            ))),
+        ]),
+        TransactionFilter::Type(transaction_types) => Row::new([
             Cell::new("transaction type must be"),
-            Cell::new(transaction_type.to_text()),
+            Cell::new(Line::from_iter(Itertools::intersperse(
+                transaction_types.iter().map(|v| Cow::from(v.to_string())),
+                Cow::from(" or "),
+            ))),
         ]),
         TransactionFilter::DateRange(date_range) => {
             Row::new([Cell::new("must be within"), Cell::new(date_range.to_text())])
         }
-        TransactionFilter::Id(id) => {
-            Row::new([Cell::new("transaction id must be"), Cell::new(id.to_text())])
-        }
-        TransactionFilter::And(filters) => todo!(),
-        TransactionFilter::Or(_) => todo!(),
+        TransactionFilter::Id(ids) => Row::new([
+            Cell::new("transaction id must be"),
+            Cell::new(Line::from_iter(Itertools::intersperse(
+                ids.iter().map(|v| Cow::from(v.to_string())),
+                Cow::from(" or "),
+            ))),
+        ]),
         TransactionFilter::Not(_) => todo!(),
     })
 }

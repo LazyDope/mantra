@@ -145,13 +145,19 @@ impl Storage {
     /// Get all transactions for a user within a date range
     pub async fn get_transactions(
         &self,
-        filter: TransactionFilter,
+        filters: Vec<TransactionFilter>,
     ) -> Result<Vec<Transaction>, StorageRunError> {
         let mut query_builder = QueryBuilder::new(
             "SELECT id, datetime, user_id, value, type, message FROM transactions WHERE ",
         );
 
-        filter.add_to_builder(&mut query_builder);
+        query_builder.push("(");
+        filters[0].add_to_builder(&mut query_builder);
+        for filter in filters {
+            query_builder.push(") AND (");
+            filter.add_to_builder(&mut query_builder);
+        }
+        query_builder.push(")");
 
         let query = query_builder.build();
 

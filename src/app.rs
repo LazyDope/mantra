@@ -120,7 +120,7 @@ impl App {
             data: AppData {
                 config: config.await?,
                 transactions: storage
-                    .get_transactions(TransactionFilter::UserId(user.get_id()))
+                    .get_transactions(vec![TransactionFilter::UserId(vec![user.get_id()])])
                     .await?,
                 transaction_filters: vec![],
                 storage,
@@ -226,15 +226,14 @@ impl AppData {
     /// Updates the table from the DB, done after making any changes
     pub async fn update_table(&mut self) -> Result<(), AppError> {
         let mut filters = Vec::with_capacity(self.transaction_filters.len() + 1);
-        filters.push(TransactionFilter::UserId(
-            self.current_user.as_ref().map(|v| v.get_id()).unwrap(),
-        ));
+        filters.push(TransactionFilter::UserId(vec![self
+            .current_user
+            .as_ref()
+            .map(|v| v.get_id())
+            .unwrap()]));
         // TODO: This is not ideal, maybe we could have separate OwnedFilters and RefFilters types
         filters.extend(self.transaction_filters.iter().cloned());
-        self.transactions = self
-            .storage
-            .get_transactions(TransactionFilter::And(filters))
-            .await?;
+        self.transactions = self.storage.get_transactions(filters).await?;
         Ok(())
     }
 
@@ -374,7 +373,7 @@ impl AppData {
                     let index = index.clamp(0, self.transactions.len() - 1);
                     let transaction = &self.transactions[index];
                     self.storage
-                        .remove_transactions(TransactionFilter::Id(transaction.trans_id))
+                        .remove_transactions(TransactionFilter::Id(vec![transaction.trans_id]))
                         .await?;
                     self.status_text =
                         format!("Deleted \"{} | {}\"", transaction.value, transaction.msg);

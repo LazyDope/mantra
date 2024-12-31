@@ -1211,6 +1211,7 @@ dependencies = [
  "deranged",
  "enum_dispatch",
  "futures",
+ "itertools",
  "num-derive",
  "num-traits",
  "ratatui",

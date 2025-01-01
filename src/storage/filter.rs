@@ -3,15 +3,16 @@ use core::{
     ops::{Bound, RangeBounds},
 };
 
+use itertools::Itertools;
 use sqlx::{QueryBuilder, Sqlite};
 
-use super::TransactionType;
+use super::TransactionTypeMap;
 
 /// Types of Filters usable for queries
 #[derive(Clone)]
 pub enum TransactionFilter {
     UserId(Vec<i32>),
-    Type(Vec<TransactionType>),
+    Type(TransactionTypeMap<bool>),
     DateRange(DateRange),
     Id(Vec<i32>),
     Not(Box<TransactionFilter>),
@@ -34,9 +35,14 @@ impl TransactionFilter {
                 }
             }
             TransactionFilter::Type(transaction_types) => {
-                builder.push("type = ").push_bind(transaction_types[0]);
-                for transaction_type in &transaction_types[1..] {
-                    builder.push(" OR type = ").push_bind(*transaction_type);
+                let mut iter = transaction_types
+                    .kv_pairs()
+                    .filter(|(_, selected)| **selected);
+                if let Some((tran_type, _)) = iter.next() {
+                    builder.push("type = ").push_bind(tran_type);
+                    for (transaction_type, _) in iter {
+                        builder.push(" OR type = ").push_bind(transaction_type);
+                    }
                 }
             }
             TransactionFilter::DateRange(date_range) => {
@@ -74,6 +80,26 @@ impl TransactionFilter {
                 }
             }
         };
+    }
+
+    pub fn get_useful(self) -> Option<TransactionFilter> {
+        if self.is_useful() {
+            Some(self)
+        } else {
+            None
+        }
+    }
+
+    fn is_useful(&self) -> bool {
+        match self {
+            TransactionFilter::UserId(ids) => !ids.is_empty(),
+            TransactionFilter::Type(transaction_type_map) => {
+                transaction_type_map.values().contains(&true)
+            }
+            TransactionFilter::DateRange(_) => true,
+            TransactionFilter::Id(ids) => !ids.is_empty(),
+            TransactionFilter::Not(transaction_filter) => transaction_filter.is_useful(),
+        }
     }
 }
 

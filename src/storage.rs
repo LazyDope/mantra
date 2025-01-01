@@ -3,7 +3,7 @@ use std::{fmt::Display, marker::PhantomData};
 
 use async_std::stream::StreamExt;
 use sqlx::{migrate::MigrateDatabase, QueryBuilder, Row, Sqlite, SqlitePool, Type};
-use strum::{Display, EnumCount, FromRepr, VariantNames};
+use strum::{Display, EnumCount, EnumIter, FromRepr, IntoEnumIterator, VariantNames};
 use thiserror::Error;
 use time::PrimitiveDateTime;
 
@@ -35,14 +35,20 @@ pub struct Transaction {
 #[derive(Error)]
 pub struct MissingVariant<T, U>(T, PhantomData<U>);
 
-/// The type of a transaction, used for filtering
-#[derive(Default, VariantNames, EnumCount, Clone, Copy, Display, FromRepr, Type)]
-#[repr(i32)]
-pub enum TransactionType {
-    #[default]
-    Other = 0,
-    Character,
-    MissionReward,
+mapped_enum! {
+    /// The type of a transaction, used for filtering
+    #[derive(Default, VariantNames, EnumCount, EnumIter, Clone, Copy, Display, FromRepr, Type)]
+    #[repr(i32)]
+    pub enum TransactionType {
+        #[default]
+        Other = 0,
+        Character,
+        MissionReward,
+    }
+
+    /// Mapping of [`TransactionType`]
+    #[derive(Clone)]
+    pub struct TransactionTypeMap;
 }
 
 /// Possible errors that may occur when first loading the db from the sqlite file
@@ -228,6 +234,16 @@ impl TransactionType {
     pub fn prev(self) -> Self {
         Self::from_repr((self as i32 - 1).rem_euclid(<Self as EnumCount>::COUNT as i32))
             .expect("TransactionType is non-zero count so will always succeed")
+    }
+}
+
+impl<T> TransactionTypeMap<T> {
+    pub fn values(&self) -> impl Iterator<Item = &T> {
+        TransactionType::iter().map(|v| &self[v])
+    }
+
+    pub fn kv_pairs(&self) -> impl Iterator<Item = (TransactionType, &T)> {
+        TransactionType::iter().map(|v| (v, &self[v]))
     }
 }
 

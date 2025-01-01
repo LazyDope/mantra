@@ -8,6 +8,8 @@ use xdg::BaseDirectories;
 
 pub mod app;
 pub mod config;
+#[macro_use]
+pub mod macros;
 pub mod storage;
 
 /// Grabs the XDG dirs

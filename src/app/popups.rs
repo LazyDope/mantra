@@ -18,6 +18,7 @@ pub enum Popup {
     AddTransaction,
     CreateUser,
     FilterResults,
+    AddFilter,
 }
 
 #[enum_dispatch]

@@ -28,6 +28,7 @@ pub struct AddTransaction {
 
 /// Selectable fields for [`AddTransaction`]
 #[derive(Default, PartialEq, Eq, FromPrimitive, EnumCount, Clone, Copy)]
+#[repr(i8)]
 pub enum AddTransactionField {
     #[default]
     TransactionType = 0,
@@ -39,18 +40,20 @@ pub enum AddTransactionField {
 impl AddTransactionField {
     /// Switch the selected field to the next one
     fn next(&mut self) {
-        *self = FromPrimitive::from_isize(
-            (*self as isize + 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
-        )
-        .expect("Will always be a valid isize unless AddTransactionField became an empty enum")
+        *self =
+            FromPrimitive::from_i8((*self as i8 + 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
+                .expect(
+                    "Will always be a valid isize unless AddTransactionField became an empty enum",
+                )
     }
 
     /// Switch the selected field to the previous one
     fn prev(&mut self) {
-        *self = FromPrimitive::from_isize(
-            (*self as isize - 1).rem_euclid(<Self as EnumCount>::COUNT as isize),
-        )
-        .expect("Will always be a valid isize unless AddTransactionField became an empty enum")
+        *self =
+            FromPrimitive::from_i8((*self as i8 - 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
+                .expect(
+                    "Will always be a valid isize unless AddTransactionField became an empty enum",
+                )
     }
 }
 

@@ -13,11 +13,11 @@ use ratatui::{
     Frame,
 };
 use strum::{EnumCount, VariantNames};
-use text::ToText;
+use text::{ToSpan, ToText};
 
 use crate::{
     app::{App, AppError},
-    storage::TransactionFilter,
+    storage::{TransactionFilter, TransactionType},
 };
 
 use super::{Popup, PopupHandler};
@@ -34,9 +34,11 @@ pub struct AddFilter {
     filter: TransactionFilter,
     selected_field: AddFilterField,
     selected_type: AddFilterType,
+    index: usize,
 }
 
 #[derive(Default, PartialEq, Eq, FromPrimitive, EnumCount, Clone, Copy)]
+#[repr(u8)]
 enum AddFilterField {
     #[default]
     Type = 0,
@@ -44,9 +46,10 @@ enum AddFilterField {
     Submit,
 }
 
-#[derive(Clone, Copy, VariantNames)]
+#[derive(Clone, Copy, VariantNames, FromPrimitive, EnumCount)]
+#[repr(u8)]
 enum AddFilterType {
-    Type,
+    TransactionType = 0,
     DateRange,
 }
 
@@ -63,12 +66,7 @@ impl FilterResults {
 
 impl AddFilter {
     pub fn new(pop_under: FilterResults) -> Self {
-        Self {
-            pop_under,
-            filter: TransactionFilter::Type(Default::default()),
-            selected_field: AddFilterField::Type,
-            selected_type: AddFilterType::Type,
-        }
+        Self::new_with_entry(pop_under, TransactionFilter::Type(Default::default()))
     }
 
     pub fn new_with_entry(pop_under: FilterResults, filter: TransactionFilter) -> Self {
@@ -76,7 +74,8 @@ impl AddFilter {
             pop_under,
             filter,
             selected_field: AddFilterField::Type,
-            selected_type: AddFilterType::Type,
+            selected_type: AddFilterType::TransactionType,
+            index: 0,
         }
     }
 }
@@ -86,16 +85,41 @@ impl AddFilterField {
     fn next(&mut self) {
         *self =
             FromPrimitive::from_i8((*self as i8 + 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
-                .expect("Will always be a valid isize unless AddFilterField became an empty enum")
+                .expect("Will always be a valid i8 unless AddFilterField became an empty enum")
     }
 
     /// Switch the selected field to the previous one
     fn prev(&mut self) {
         *self =
             FromPrimitive::from_i8((*self as i8 - 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
-                .expect("Will always be a valid isize unless AddFilterField became an empty enum")
+                .expect("Will always be a valid i8 unless AddFilterField became an empty enum")
     }
 }
+
+impl AddFilterType {
+    /// Switch the selected field to the next one
+    fn next(&mut self) {
+        *self =
+            FromPrimitive::from_i8((*self as i8 + 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
+                .expect("Will always be a valid i8 unless AddFilterType became an empty enum")
+    }
+
+    /// Switch the selected field to the previous one
+    fn prev(&mut self) {
+        *self =
+            FromPrimitive::from_i8((*self as i8 - 1).rem_euclid(<Self as EnumCount>::COUNT as i8))
+                .expect("Will always be a valid i8 unless AddFilterType became an empty enum")
+    }
+
+    /// How many possibilities available for the value selector
+    fn value_count(&self) -> usize {
+        match self {
+            AddFilterType::TransactionType => TransactionType::COUNT,
+            AddFilterType::DateRange => 2,
+        }
+    }
+}
+
 impl PopupHandler for FilterResults {
     async fn handle_event(
         mut self,
@@ -184,6 +208,29 @@ impl PopupHandler for AddFilter {
                     KeyCode::Down => {
                         self.selected_field.next();
                     }
+                    KeyCode::Left => match self.selected_field {
+                        AddFilterField::Type => {
+                            self.selected_type.prev();
+                            self.filter = self.selected_type.into()
+                        }
+                        AddFilterField::Value => {
+                            self.index = (self.index as isize - 1)
+                                .rem_euclid(self.selected_type.value_count() as isize)
+                                as usize
+                        }
+                        AddFilterField::Submit => (),
+                    },
+                    KeyCode::Right => match self.selected_field {
+                        AddFilterField::Type => {
+                            self.selected_type.next();
+                            self.filter = self.selected_type.into()
+                        }
+                        AddFilterField::Value => {
+                            self.index =
+                                (self.index + 1).rem_euclid(self.selected_type.value_count())
+                        }
+                        AddFilterField::Submit => (),
+                    },
                     KeyCode::Esc => {
                         return Ok(Some(Popup::FilterResults(self.pop_under)));
                     }
@@ -202,7 +249,8 @@ impl PopupHandler for AddFilter {
             pop_under,
             selected_field,
             selected_type,
-            ..
+            filter,
+            index,
         } = self;
 
         pop_under.render_to_frame(area, frame);
@@ -247,7 +295,7 @@ impl PopupHandler for AddFilter {
         let type_text = Tabs::new(<AddFilterType as VariantNames>::VARIANTS.iter().copied())
             .select(*selected_type as usize)
             .block(type_field);
-        let values_text = Paragraph::new("").block(values_field);
+        let values_text = display_filter_values(filter, *index).block(values_field);
         let submit_text = Paragraph::new(SUBMIT_TEXT)
             .block(submit_field)
             .alignment(Alignment::Center);
@@ -265,35 +313,83 @@ impl PopupHandler for AddFilter {
     }
 }
 
+impl From<AddFilterType> for TransactionFilter {
+    fn from(value: AddFilterType) -> Self {
+        match value {
+            AddFilterType::TransactionType => TransactionFilter::Type(Default::default()),
+            AddFilterType::DateRange => TransactionFilter::DateRange((..).into()),
+        }
+    }
+}
+
 fn filters_as_rows(filters: &[TransactionFilter]) -> impl Iterator<Item = Row> {
-    filters.iter().map(|filter| match filter {
-        TransactionFilter::UserId(ids) => Row::new([
-            Cell::new("user id must be"),
-            Cell::new(Line::from_iter(Itertools::intersperse(
+    filters
+        .iter()
+        .map(|filter| Row::new(filter_as_cells(filter).into_iter().map(Cell::from)))
+}
+
+fn filter_as_cells(filter: &TransactionFilter) -> [String; 2] {
+    match filter {
+        TransactionFilter::UserId(ids) => [
+            String::from("user id must be"),
+            Itertools::intersperse(
                 ids.iter().map(|v| Cow::from(v.to_string())),
                 Cow::from(" or "),
-            ))),
-        ]),
-        TransactionFilter::Type(transaction_types) => Row::new([
-            Cell::new("transaction type must be"),
-            Cell::new(Line::from_iter(Itertools::intersperse(
+            )
+            .collect(),
+        ],
+        TransactionFilter::Type(transaction_types) => [
+            String::from("transaction type must be"),
+            Itertools::intersperse(
                 transaction_types
                     .kv_pairs()
                     .filter(|&(_, selected)| *selected)
                     .map(|(t_type, _)| Cow::from(t_type.to_string())),
                 Cow::from(" or "),
-            ))),
-        ]),
+            )
+            .collect(),
+        ],
         TransactionFilter::DateRange(date_range) => {
-            Row::new([Cell::new("must be within"), Cell::new(date_range.to_text())])
+            [String::from("date must be within"), date_range.to_string()]
         }
-        TransactionFilter::Id(ids) => Row::new([
-            Cell::new("transaction id must be"),
-            Cell::new(Line::from_iter(Itertools::intersperse(
+        TransactionFilter::Id(ids) => [
+            String::from("transaction id must be"),
+            Itertools::intersperse(
                 ids.iter().map(|v| Cow::from(v.to_string())),
                 Cow::from(" or "),
-            ))),
-        ]),
-        TransactionFilter::Not(_) => todo!(),
-    })
+            )
+            .collect(),
+        ],
+        TransactionFilter::Not(filter) => {
+            let mut cells = filter_as_cells(filter);
+            cells[0] = cells[0].replace("must ", "must not ");
+            cells
+        }
+    }
+}
+
+fn display_filter_values(filter: &TransactionFilter, index: usize) -> Paragraph {
+    match filter {
+        TransactionFilter::Type(transaction_types) => {
+            Paragraph::new(Line::from_iter(Itertools::intersperse(
+                transaction_types
+                    .kv_pairs()
+                    .enumerate()
+                    .map(|(i, (t_type, selected))| {
+                        let text = Span::from(t_type.to_string());
+                        if i == index {
+                            text.style(Style::default().fg(Color::Black).bg(Color::LightYellow))
+                        } else if *selected {
+                            text.style(Style::default().fg(Color::Black).bg(Color::White))
+                        } else {
+                            text
+                        }
+                    }),
+                Span::from(", "),
+            )))
+        }
+        TransactionFilter::DateRange(date_range) => Paragraph::new(date_range.to_string()),
+        TransactionFilter::Not(filter) => display_filter_values(filter, index),
+        _ => Paragraph::new(""),
+    }
 }

@@ -96,7 +96,10 @@ impl TransactionFilter {
             TransactionFilter::Type(transaction_type_map) => {
                 transaction_type_map.values().contains(&true)
             }
-            TransactionFilter::DateRange(_) => true,
+            TransactionFilter::DateRange(date_range) => {
+                !(matches!(date_range.start, Bound::Unbounded)
+                    && matches!(date_range.end, Bound::Unbounded))
+            }
             TransactionFilter::Id(ids) => !ids.is_empty(),
             TransactionFilter::Not(transaction_filter) => transaction_filter.is_useful(),
         }

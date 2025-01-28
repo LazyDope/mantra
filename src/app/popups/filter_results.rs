@@ -13,7 +13,6 @@ use ratatui::{
     Frame,
 };
 use strum::{EnumCount, VariantNames};
-use text::{ToSpan, ToText};
 
 use crate::{
     app::{App, AppError},

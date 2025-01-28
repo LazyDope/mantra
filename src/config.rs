@@ -21,7 +21,7 @@ pub enum ConfigError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
-    Serde(#[from] serde_yaml::Error),
+    Serde(#[from] serde_yml::Error),
 }
 
 /// Configuration for the [`App`] to use
@@ -60,7 +60,7 @@ impl Config {
                         .write(true)
                         .create_new(true)
                         .open(&config_path)?;
-                    serde_yaml::to_writer(&file, &Config::default())?;
+                    serde_yml::to_writer(&file, &Config::default())?;
                     file.seek(SeekFrom::Start(0))
                         .expect("Seek to the start of a file we just created cannot fail");
                     file
@@ -68,7 +68,7 @@ impl Config {
                 _ => return Err(error.into()),
             },
         };
-        Ok(serde_yaml::from_reader(config_file)?)
+        Ok(serde_yml::from_reader(config_file)?)
     }
 }
 

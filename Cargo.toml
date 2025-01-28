@@ -20,7 +20,7 @@ num-derive = "0.4.2"
 num-traits = "0.2.19"
 ratatui = "0.28.1"
 serde = { version = "1.0.209", features = ["derive"] }
-serde_yaml = "0.9.34"
+serde_yml = "0.0.12"
 sqlx = { version = "0.8.1", features = ["sqlite", "runtime-async-std", "time"] }
 strum = { version = "0.26.3", features = ["derive"] }
 thiserror = "1.0.63"

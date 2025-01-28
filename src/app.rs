@@ -302,7 +302,7 @@ impl AppData {
             .header(
                 Row::new([self.config.currency.long.as_str(), "Note", "Date/Time"]).underlined(),
             )
-            .highlight_style(Style::new().black().on_white());
+            .row_highlight_style(Style::new().black().on_white());
 
         frame.render_stateful_widget(&table_widget, table_area, &mut self.table_state);
         frame.render_widget(

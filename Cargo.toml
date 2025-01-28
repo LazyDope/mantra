@@ -15,14 +15,14 @@ crossterm = { version = "0.28.1", features = ["event-stream"] }
 deranged = { version = "0.3.11", features = ["serde"] }
 enum_dispatch = "0.3.13"
 futures = "0.3.31"
-itertools = "0.13.0"
+itertools = "0.14.0"
 num-derive = "0.4.2"
 num-traits = "0.2.19"
-ratatui = "0.28.1"
+ratatui = "0.29.0"
 serde = { version = "1.0.209", features = ["derive"] }
 serde_yml = "0.0.12"
 sqlx = { version = "0.8.1", features = ["sqlite", "runtime-async-std", "time"] }
 strum = { version = "0.26.3", features = ["derive"] }
-thiserror = "1.0.63"
+thiserror = "2.0.11"
 time = { version = "0.3.36", features = ["formatting", "local-offset"] }
 xdg = "2.5.2"

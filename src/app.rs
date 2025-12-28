@@ -142,9 +142,7 @@ impl App {
                 self.data.play_intro(frame, animation_progress)
             }
             AppMode::LogTable => self.data.display_log(frame),
-            AppMode::UserLogin(username) => {
-                AppData::user_login(username, frame, self.data.popup.is_some())
-            }
+            AppMode::UserLogin(username) => user_login(username, frame, self.data.popup.is_some()),
             AppMode::Quitting => (),
         }
 
@@ -389,35 +387,35 @@ impl AppData {
         }
         Ok(None)
     }
+}
 
-    pub fn user_login(username: &CursoredString, frame: &mut Frame, hide_cursor: bool) {
-        const USERNAME_HEIGHT: u16 = 1;
-        const BORDER_SIZE: u16 = 1;
+pub fn user_login(username: &CursoredString, frame: &mut Frame, hide_cursor: bool) {
+    const USERNAME_HEIGHT: u16 = 1;
+    const BORDER_SIZE: u16 = 1;
 
-        let [area] = Layout::vertical([Constraint::Length(USERNAME_HEIGHT + 4 * BORDER_SIZE)])
-            .flex(Flex::Center)
-            .areas(frame.area());
-        let [area] = Layout::horizontal([Constraint::Percentage(40)])
-            .flex(Flex::Center)
-            .areas(area);
-        let block = Block::bordered().title("Login");
-        frame.render_widget(block, area);
-        let area = area.inner(Margin::new(BORDER_SIZE, BORDER_SIZE));
-        let [username_area] =
-            Layout::vertical([Constraint::Length(USERNAME_HEIGHT + BORDER_SIZE * 2)]).areas(area);
+    let [area] = Layout::vertical([Constraint::Length(USERNAME_HEIGHT + 4 * BORDER_SIZE)])
+        .flex(Flex::Center)
+        .areas(frame.area());
+    let [area] = Layout::horizontal([Constraint::Percentage(40)])
+        .flex(Flex::Center)
+        .areas(area);
+    let block = Block::bordered().title("Login");
+    frame.render_widget(block, area);
+    let area = area.inner(Margin::new(BORDER_SIZE, BORDER_SIZE));
+    let [username_area] =
+        Layout::vertical([Constraint::Length(USERNAME_HEIGHT + BORDER_SIZE * 2)]).areas(area);
 
-        let username_field = Block::bordered()
-            .title("Username")
-            .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
+    let username_field = Block::bordered()
+        .title("Username")
+        .style(Style::default().bg(Color::LightYellow).fg(Color::Black));
 
-        let username_text = Paragraph::new(username.as_str()).block(username_field);
-        if !hide_cursor {
-            frame.set_cursor_position(Position::new(
-                username_area.x + username.index as u16 + 1,
-                username_area.y + 1,
-            ));
-        }
-
-        frame.render_widget(username_text, username_area);
+    let username_text = Paragraph::new(username.as_str()).block(username_field);
+    if !hide_cursor {
+        frame.set_cursor_position(Position::new(
+            username_area.x + username.index as u16 + 1,
+            username_area.y + 1,
+        ));
     }
+
+    frame.render_widget(username_text, username_area);
 }

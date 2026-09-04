@@ -253,8 +253,7 @@ impl TryFrom<i32> for TransactionType {
     fn try_from(value: i32) -> Result<Self, Self::Error> {
         i16::try_from(value)
             .ok()
-            .map(|v| Self::from_repr(v))
-            .flatten()
+            .and_then(Self::from_repr)
             .ok_or(MissingVariant(value, PhantomData))
     }
 }

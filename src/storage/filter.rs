@@ -5,6 +5,7 @@ use core::{
 
 use itertools::Itertools;
 use sqlx::{QueryBuilder, Sqlite};
+use time::Date;
 
 use super::TransactionTypeMap;
 
@@ -21,8 +22,8 @@ pub enum TransactionFilter {
 /// Allows storing a range because RangeBound is not dyn compatible
 #[derive(Clone, Debug)]
 pub struct DateRange {
-    start: Bound<time::PrimitiveDateTime>,
-    end: Bound<time::PrimitiveDateTime>,
+    pub start: Bound<Date>,
+    pub end: Bound<Date>,
 }
 
 impl TransactionFilter {
@@ -111,7 +112,7 @@ impl DateRange {
         match self.start {
             Bound::Included(inclusive) => format!("[{}", inclusive),
             Bound::Excluded(exclusive) => format!("({}", exclusive),
-            Bound::Unbounded => format!("("),
+            Bound::Unbounded => "(".to_string(),
         }
     }
 
@@ -119,14 +120,14 @@ impl DateRange {
         match self.end {
             Bound::Included(inclusive) => format!("{}]", inclusive),
             Bound::Excluded(exclusive) => format!("{})", exclusive),
-            Bound::Unbounded => format!(")"),
+            Bound::Unbounded => ")".to_string(),
         }
     }
 }
 
 impl<T> From<T> for DateRange
 where
-    T: RangeBounds<time::PrimitiveDateTime>,
+    T: RangeBounds<Date>,
 {
     fn from(value: T) -> Self {
         Self {

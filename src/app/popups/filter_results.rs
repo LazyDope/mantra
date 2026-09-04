@@ -1,5 +1,4 @@
-use core::iter::Iterator;
-use std::{borrow::Cow, marker::PhantomData};
+use std::{borrow::Cow, iter::Iterator, marker::PhantomData, ops::Bound};
 
 use crossterm::event::{self, Event, KeyCode};
 use itertools::Itertools;
@@ -13,6 +12,7 @@ use ratatui::{
     Frame,
 };
 use strum::{EnumCount, VariantNames};
+use time::Date;
 
 use crate::{
     app::{App, AppError},
@@ -20,6 +20,9 @@ use crate::{
 };
 
 use super::{Popup, PopupHandler};
+
+mod date_picker;
+use date_picker::{DateBoundAction, DatePicker};
 
 /// Popup for viewing and editing filters
 pub struct FilterResults {
@@ -35,6 +38,8 @@ pub struct AddFilter {
     selected_type: AddFilterType,
     // Used to index which position in the values is currently selected
     index: i16,
+    // Used to pick the start/end dates of a DateRange filter
+    date_picker: Option<DatePicker>,
 }
 
 #[derive(Default, PartialEq, Eq, FromPrimitive, EnumCount, Clone, Copy)]
@@ -78,6 +83,7 @@ impl AddFilter {
             filter,
             selected_field: AddFilterField::Type,
             index: 0,
+            date_picker: None,
         }
     }
 
@@ -101,6 +107,35 @@ impl AddFilter {
     pub fn prev_field(&mut self) {
         self.selected_field.prev();
         self.clamp_index();
+    }
+
+    /// Whether the calendar for the selected start/end bound is open
+    pub fn is_picker_open(&self) -> bool {
+        self.date_picker.is_some()
+    }
+
+    /// Open the calendar for the currently selected start/end bound, starting the cursor on the
+    /// date that bound is already set to, if any
+    pub fn open_date_picker(&mut self, bound: Bound<Date>) {
+        self.date_picker = Some(DatePicker::from_bound(bound));
+    }
+
+    /// Store the selected bound kind (and calendar date, unless Unbounded) as the bound of the
+    /// `DateRange` currently selected
+    pub fn set_selected_bound(&mut self) {
+        let Some(date_picker) = &self.date_picker else {
+            return;
+        };
+        let bound = date_picker.bound();
+        match self.filter {
+            TransactionFilter::DateRange(ref mut date_range) if self.index == 0 => {
+                date_range.start = bound;
+            }
+            TransactionFilter::DateRange(ref mut date_range) => {
+                date_range.end = bound;
+            }
+            _ => unreachable!("Date picker mode implies the filter is a DateRange"),
+        }
     }
 }
 
@@ -232,6 +267,19 @@ impl PopupHandler for AddFilter {
     ) -> Result<Option<Popup>, AppError> {
         if let Event::Key(key) = event {
             if key.kind == event::KeyEventKind::Press {
+                if let Some(date_picker) = self.date_picker.as_mut() {
+                    let action = date_picker.handle_key(key.code);
+                    match action {
+                        DateBoundAction::Close => self.date_picker = None,
+                        DateBoundAction::Select => {
+                            self.set_selected_bound();
+                            self.date_picker = None;
+                        }
+                        DateBoundAction::SwitchBound => self.next_index(),
+                        DateBoundAction::None => (),
+                    }
+                    return Ok(Some(Popup::AddFilter(self)));
+                }
                 match key.code {
                     KeyCode::Up => self.prev_field(),
                     KeyCode::Down => self.next_field(),
@@ -261,7 +309,14 @@ impl PopupHandler for AddFilter {
                                     .expect("AddFilter index should always be a valid repr");
                                 transaction_type_map[t_type] = !transaction_type_map[t_type]
                             }
-                            TransactionFilter::DateRange(_date_range) => todo!(),
+                            TransactionFilter::DateRange(ref range) => {
+                                let bound = if self.index == 0 {
+                                    range.start
+                                } else {
+                                    range.end
+                                };
+                                self.open_date_picker(bound);
+                            }
                             TransactionFilter::Not(_transaction_filter) => todo!(),
                             x => panic!("Custom filter should never be of type {x:?}"),
                         },
@@ -290,6 +345,7 @@ impl PopupHandler for AddFilter {
             selected_type,
             filter,
             index,
+            date_picker,
         } = self;
 
         pop_under.render_to_frame(area, frame);
@@ -298,20 +354,27 @@ impl PopupHandler for AddFilter {
         const BORDER_SIZE: u16 = 1;
         const SUBMIT_TEXT: &str = "Submit";
 
-        let [area] = Layout::vertical([Constraint::Length(3 * BOX_HEIGHT + 8 * BORDER_SIZE)])
-            .flex(Flex::Center)
-            .areas(area);
-        let [area] = Layout::horizontal([Constraint::Percentage(30)])
-            .flex(Flex::Center)
-            .areas(area);
+        let picker_open = date_picker.is_some();
+        let picker_height = date_picker.as_ref().map_or(0, DatePicker::height);
+
+        let [area] = Layout::vertical([Constraint::Length(
+            3 * BOX_HEIGHT + picker_height + 6 * BORDER_SIZE + 2 * BORDER_SIZE,
+        )])
+        .flex(Flex::Center)
+        .areas(area);
+        let [area] =
+            Layout::horizontal([Constraint::Percentage(if picker_open { 40 } else { 30 })])
+                .flex(Flex::Center)
+                .areas(area);
         let block = Block::bordered().title("Add Filter");
         frame.render_widget(Clear, area);
         frame.render_widget(block, area);
 
         let area = area.inner(Margin::new(BORDER_SIZE, BORDER_SIZE));
-        let [type_area, values_area, submit_area] = Layout::vertical([
+        let [type_area, values_area, picker_area, submit_area] = Layout::vertical([
             Constraint::Length(BOX_HEIGHT + BORDER_SIZE * 2),
             Constraint::Length(BOX_HEIGHT + BORDER_SIZE * 2),
+            Constraint::Length(picker_height),
             Constraint::Length(BOX_HEIGHT + BORDER_SIZE * 2),
         ])
         .areas(area);
@@ -345,6 +408,14 @@ impl PopupHandler for AddFilter {
 
         frame.render_widget(type_text, type_area);
         frame.render_widget(values_text, values_area);
+        if let Some(date_picker) = date_picker.as_ref() {
+            let title = if *index == 0 {
+                "Start Date"
+            } else {
+                "End Date"
+            };
+            date_picker.render_to_frame(picker_area, frame, title, active_style);
+        }
         frame.render_widget(
             submit_text,
             Layout::horizontal([Constraint::Length(
@@ -458,5 +529,168 @@ fn display_filter_values(filter: &TransactionFilter, index: Option<i16>) -> Para
         }
         TransactionFilter::Not(filter) => display_filter_values(filter, index),
         _ => Paragraph::new(""),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ops::Bound;
+
+    use super::date_picker::DateBoundKind;
+    use super::*;
+    use time::{Date, Month, OffsetDateTime};
+
+    fn add_filter_for_date_range() -> AddFilter {
+        AddFilter::new_with_entry(
+            FilterResults::new(vec![]),
+            TransactionFilter::DateRange((..).into()),
+        )
+    }
+    #[test]
+    fn opening_the_picker_uses_the_selected_bound() {
+        let start = Date::from_calendar_date(2026, Month::March, 14).unwrap();
+        let mut add_filter = add_filter_for_date_range();
+        add_filter.selected_field = AddFilterField::Value;
+
+        add_filter.open_date_picker(Bound::Included(start));
+        assert!(add_filter.is_picker_open());
+        assert_eq!(
+            add_filter.date_picker.as_ref().unwrap().kind(),
+            DateBoundKind::Included
+        );
+        assert_eq!(
+            add_filter.date_picker.as_ref().unwrap().selected(),
+            Some(start)
+        );
+
+        // an unbounded bound opens on today with Included as the default kind
+        add_filter.open_date_picker(Bound::Unbounded);
+        let today = OffsetDateTime::now_local().unwrap().date();
+        assert_eq!(
+            add_filter.date_picker.as_ref().unwrap().kind(),
+            DateBoundKind::Included
+        );
+        assert_eq!(
+            add_filter.date_picker.as_ref().unwrap().selected(),
+            Some(today)
+        );
+
+        // an already excluded bound keeps its kind
+        add_filter.open_date_picker(Bound::Excluded(start));
+        assert_eq!(
+            add_filter.date_picker.as_ref().unwrap().kind(),
+            DateBoundKind::Excluded
+        );
+    }
+
+    #[test]
+    fn picker_sets_included_excluded_and_unbounded_bounds() {
+        let date = Date::from_calendar_date(2026, Month::March, 14).unwrap();
+        let mut add_filter = add_filter_for_date_range();
+        add_filter.selected_field = AddFilterField::Value;
+
+        add_filter.open_date_picker(Bound::Included(date));
+        add_filter
+            .date_picker
+            .as_mut()
+            .unwrap()
+            .set_kind(DateBoundKind::Included);
+        add_filter.set_selected_bound();
+        let TransactionFilter::DateRange(start_range) = &add_filter.filter else {
+            unreachable!("The filter is created as a DateRange")
+        };
+        assert!(matches!(start_range.start, Bound::Included(_)));
+        assert!(matches!(start_range.end, Bound::Unbounded));
+
+        add_filter.open_date_picker(Bound::Included(date));
+        add_filter
+            .date_picker
+            .as_mut()
+            .unwrap()
+            .set_kind(DateBoundKind::Excluded);
+        add_filter.set_selected_bound();
+        let TransactionFilter::DateRange(excluded_range) = &add_filter.filter else {
+            unreachable!("The filter is created as a DateRange")
+        };
+        assert!(matches!(excluded_range.start, Bound::Excluded(_)));
+        assert!(matches!(excluded_range.end, Bound::Unbounded));
+
+        add_filter.open_date_picker(Bound::Included(date));
+        add_filter
+            .date_picker
+            .as_mut()
+            .unwrap()
+            .set_kind(DateBoundKind::Unbounded);
+        add_filter.set_selected_bound();
+        let TransactionFilter::DateRange(unbounded_range) = &add_filter.filter else {
+            unreachable!("The filter is created as a DateRange")
+        };
+        assert!(matches!(unbounded_range.start, Bound::Unbounded));
+        assert!(matches!(unbounded_range.end, Bound::Unbounded));
+    }
+
+    #[test]
+    fn picker_cursor_returns_to_the_value_just_set() {
+        let mut add_filter = add_filter_for_date_range();
+        add_filter.selected_field = AddFilterField::Value;
+
+        let target = Date::from_calendar_date(2026, Month::May, 20).unwrap();
+        add_filter.open_date_picker(Bound::Included(target));
+        add_filter.set_selected_bound();
+
+        let stored_start = match &add_filter.filter {
+            TransactionFilter::DateRange(date_range) => date_range.start,
+            _ => unreachable!("The filter is created as a DateRange"),
+        };
+        add_filter.open_date_picker(stored_start);
+        assert_eq!(
+            add_filter.date_picker.as_ref().unwrap().selected(),
+            Some(target)
+        );
+    }
+
+    #[test]
+    fn renders_with_and_without_the_date_picker() {
+        use ratatui::{backend::TestBackend, Terminal};
+
+        let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
+
+        let mut add_filter = add_filter_for_date_range();
+        add_filter.selected_field = AddFilterField::Value;
+
+        let cursor = Date::from_calendar_date(2026, Month::September, 10).unwrap();
+        add_filter.open_date_picker(Bound::Included(cursor));
+        terminal
+            .draw(|frame| add_filter.render_to_frame(frame.area(), frame))
+            .unwrap();
+        assert!(buffer_text(&terminal).contains("Start Date"));
+
+        add_filter
+            .date_picker
+            .as_mut()
+            .unwrap()
+            .set_kind(DateBoundKind::Unbounded);
+        terminal
+            .draw(|frame| add_filter.render_to_frame(frame.area(), frame))
+            .unwrap();
+        assert!(!buffer_text(&terminal).contains("Start Date"));
+        assert!(buffer_text(&terminal).contains("Unbounded"));
+
+        add_filter.date_picker = None;
+        terminal
+            .draw(|frame| add_filter.render_to_frame(frame.area(), frame))
+            .unwrap();
+        assert!(!buffer_text(&terminal).contains("Start Date"));
+    }
+
+    fn buffer_text(terminal: &Terminal<ratatui::backend::TestBackend>) -> String {
+        terminal
+            .backend()
+            .buffer()
+            .content()
+            .chunks(terminal.backend().buffer().area().width as usize)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }

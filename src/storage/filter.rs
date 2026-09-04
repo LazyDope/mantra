@@ -9,7 +9,7 @@ use sqlx::{QueryBuilder, Sqlite};
 use super::TransactionTypeMap;
 
 /// Types of Filters usable for queries
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TransactionFilter {
     UserId(Vec<i32>),
     Type(TransactionTypeMap<bool>),
@@ -19,7 +19,7 @@ pub enum TransactionFilter {
 }
 
 /// Allows storing a range because RangeBound is not dyn compatible
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DateRange {
     start: Bound<time::PrimitiveDateTime>,
     end: Bound<time::PrimitiveDateTime>,
@@ -106,6 +106,24 @@ impl TransactionFilter {
     }
 }
 
+impl DateRange {
+    pub fn start_bound_string(&self) -> String {
+        match self.start {
+            Bound::Included(inclusive) => format!("[{}", inclusive),
+            Bound::Excluded(exclusive) => format!("({}", exclusive),
+            Bound::Unbounded => format!("("),
+        }
+    }
+
+    pub fn end_bound_string(&self) -> String {
+        match self.end {
+            Bound::Included(inclusive) => format!("{}]", inclusive),
+            Bound::Excluded(exclusive) => format!("{})", exclusive),
+            Bound::Unbounded => format!(")"),
+        }
+    }
+}
+
 impl<T> From<T> for DateRange
 where
     T: RangeBounds<time::PrimitiveDateTime>,
@@ -120,16 +138,11 @@ where
 
 impl std::fmt::Display for DateRange {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.start {
-            Bound::Included(inclusive) => write!(f, "[{}", inclusive)?,
-            Bound::Excluded(exclusive) => write!(f, "({}", exclusive)?,
-            Bound::Unbounded => write!(f, "(")?,
-        }
-        write!(f, "-")?;
-        match self.end {
-            Bound::Included(inclusive) => write!(f, "{}]", inclusive),
-            Bound::Excluded(exclusive) => write!(f, "{})", exclusive),
-            Bound::Unbounded => write!(f, ")"),
-        }
+        write!(
+            f,
+            "{}-{}",
+            self.start_bound_string(),
+            self.end_bound_string()
+        )
     }
 }

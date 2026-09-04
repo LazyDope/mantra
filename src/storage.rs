@@ -32,13 +32,13 @@ pub struct Transaction {
 }
 
 /// Error that may occur when converting type id to the enum variant
-#[derive(Error)]
-pub struct MissingVariant<T, U>(T, PhantomData<U>);
+#[derive(Error, Debug)]
+pub struct MissingVariant<Source, Dest>(pub(crate) Source, pub(crate) PhantomData<Dest>);
 
 mapped_enum! {
     /// The type of a transaction, used for filtering
     #[derive(Default, VariantNames, EnumCount, EnumIter, Clone, Copy, Display, FromRepr, Type)]
-    #[repr(i32)]
+    #[repr(i16)]
     pub enum TransactionType {
         #[default]
         Other = 0,
@@ -47,7 +47,7 @@ mapped_enum! {
     }
 
     /// Mapping of [`TransactionType`]
-    #[derive(Clone)]
+    #[derive(Clone, Debug)]
     pub struct TransactionTypeMap;
 }
 
@@ -226,13 +226,13 @@ impl User {
 impl TransactionType {
     /// Returns the next type of transaction from the enum
     pub fn next(self) -> Self {
-        Self::from_repr((self as i32 + 1).rem_euclid(<Self as EnumCount>::COUNT as i32))
+        Self::from_repr((self as i16 + 1).rem_euclid(<Self as EnumCount>::COUNT as i16))
             .expect("TransactionType is non-zero count so will always succeed")
     }
 
     /// Returns the previous type of transaction from the enum
     pub fn prev(self) -> Self {
-        Self::from_repr((self as i32 - 1).rem_euclid(<Self as EnumCount>::COUNT as i32))
+        Self::from_repr((self as i16 - 1).rem_euclid(<Self as EnumCount>::COUNT as i16))
             .expect("TransactionType is non-zero count so will always succeed")
     }
 }
@@ -251,7 +251,11 @@ impl TryFrom<i32> for TransactionType {
     type Error = MissingVariant<i32, Self>;
 
     fn try_from(value: i32) -> Result<Self, Self::Error> {
-        Self::from_repr(value).ok_or(MissingVariant(value, PhantomData))
+        i16::try_from(value)
+            .ok()
+            .map(|v| Self::from_repr(v))
+            .flatten()
+            .ok_or(MissingVariant(value, PhantomData))
     }
 }
 
@@ -267,16 +271,16 @@ impl Display for User {
     }
 }
 
-impl<T, U> Display for MissingVariant<T, U>
+impl<Source, Dest> Display for MissingVariant<Source, Dest>
 where
-    T: Display,
+    Source: Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "Missing Variant for: {} in {}",
             self.0,
-            std::any::type_name::<U>()
+            std::any::type_name::<Dest>()
         )
     }
 }
